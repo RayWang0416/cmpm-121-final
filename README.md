@@ -8,6 +8,7 @@
 
 
 **Design Lead**: **Ray Wang**
+
 ---
 
 ## Tools and Materials
