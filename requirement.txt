@@ -1,0 +1,60 @@
+[F0.a] You control a character moving over a 2D grid.
+[F0.b] You advance time manually in the turn-based simulation.
+[F0.c] You can reap or sow plants on grid cells only when you are near them.
+[F0.d] Grid cells have sun and water levels. The incoming sun and water for each cell is somehow randomly generated each turn. Sun energy cannot be stored in a cell (it is used immediately or lost) while water moisture can be slowly accumulated over several turns.
+[F0.e] Each plant on the grid has a distinct type (e.g. one of 3 species) and a growth level (e.g. “level 1”, “level 2”, “level 3”).
+[F0.f] Simple spatial rules govern plant growth based on sun, water, and nearby plants (growth is unlocked by satisfying conditions).
+[F0.g] A play scenario is completed when some condition is satisfied (e.g. at least X plants at growth level Y or above).
+
+1. 2D游戏
+2. 角色+移动
+3. 棕色背景，网格风格，每一格代表一块地（10*10）
+3. 回合制（天，玩家可自行操控）
+4. 田地属性：阳光，水（最高容量100）
+    -阳光：每天自动随机生成，无法存储（每天刷新）
+    -水：每天自动随机生成，可以存储（每天可累计）
+    -会显示当前格子的阳光和水的等级
+5. 田地属性：种植
+    -玩家可以在当前格子采集或种植植物
+    -种植植物具有条件
+    -会显示当前格子种植的植物类型和植物成长等级（1，2，3级）
+    -当植物生长条件达成，且玩家选择进入下一回合/天时，则植物成长至下一阶段
+6. 可种植植物（先搞三种）：土豆，胡萝卜，白菜：
+    -土豆lv1：0阳光，20水，可采集，获得1土豆
+    -土豆lv2：20阳光，20水，可采集，获得2土豆
+    -土豆lv3：20阳光，20水，可采集，获得4土豆
+
+    -胡萝卜lv1：0阳光，20水，可采集，获得1胡萝卜
+    -胡萝卜lv2：60阳光，40水，可采集，获得2胡萝卜
+    -胡萝卜lv3：45阳光，20水，可采集，获得4胡萝卜
+
+    -白菜lv1：0阳光，70水，可采集，获得1白菜
+    -白菜lv2：55阳光，30水，可采集，获得2白菜
+    -白菜lv3：65阳光，20水，可采集，获得4白菜
+
+
+[F1.a] The important state of your game's grid must be backed by a single contiguous byte array in AoS or SoA format. If your game stores the grid state in multiple format, the byte array format must be the primary format (i.e. other formats are decoded from it as needed).
+[F1.b] The player must be able to manually save their progress in the game. This must allow them to load state and continue play another day (i.e. after quitting the game app). The player must be able to manage multiple save files/slots.
+[F1.c] The game must implement an implicit auto-save system to support recovery from unexpected quits. (For example, when the game is launched, if an auto-save entry is present, the game might ask the player "do you want to continue where you left off?" The auto-save entry might or might not be visible among the list of manual save entries available for the player to load as part of F1.b.)
+[F1.d] The player must be able to undo every major choice (all the way back to the start of play), even from a saved game. They should be able to redo (undo of undo operations) multiple times.
+
+
+[F2.a] External DSL for scenario designs: In separate text file or text block, designers should be able to express the design of different gameplay scenarios, e.g. starting conditions, weather randomization policy, and victory conditions. The language must be able to schedule unique events that happen at specific times. (Think about how you could define a level progression by putting the details specific to each level in a separate text file or one big file describing the progression as a sequence.)
+Does my external DSL need to be parsed at run-time? No, it would be acceptable to parse your external DSL at compile-time. This would limit the usability of your language because players would not be able to use text editing tools on their own machines to create new scenarios without setting up all of your team's software build infrastructure. However, it still practices your understanding of external DSLs and how they can be used to make a project more data-driven by designers who don't know your project's main programming language.
+[F2.b] Internal DSL for plant types and growth conditions: Within the main programming language used for the rest of your game, you should implement and use a domain-specific language for defining your different types of plants and the unique growth rules that apply to each. (Think about how you could add and remove item types from your D1 code by pushing/popping items from an array or how you could create new types of stickers at runtime in D2.)
+Do my plant types need to be structurally different or can they just be numerically different? Your plant types need to be structurally different in the sense that the conditions under which they grow cannot easily be summarized by different numerical thresholds. For example, it wouldn't work to have only one plant type that requires two neighbor plans of the same species and another plant type that requires three neighbors of the same species. Instead, you might have one plant type that cares about neighboring plant species while another type cares about having only a moderate level of soil moisture. You might need to adjust your game design to one that better shows off the expressiveness of your internal DSL (one that highlights the value of being able to use arbitrary host-language expressions).
+[F2.c] Switch to an alternate platform: Change either your project's primary programming language or your primary user interface library/engine/framework. As more of your design is expressed in DSLs, your design becomes increasingly insulated from changes to your primarily programming language or engine. Using your earlier implementation as a reference, it becomes more realistic that you'd be able to leverage generative AI for the large but mostly mindless translations from one language or engine to another.
+Using Brace or another LLM-based assistant, consider providing entire modules at a time to the assistant and asking, for example, "I'm porting my project from {platform A} to {platform B}. Here is my {platform A} implementation. Help me come up with a plan for adapting it to run on {platform B}. {paste an entire source code file here}"
+See the Lecture 25 (Internal and External DSL) slidesLinks to an external site. for additional support in satisfying these DSL requirements.
+
+[F3.a] The game must be internationalized in way that allows all text visible to the player to be translated into different written languages (i.e. there are no messages that are hard-coded to display only English-language text, but it is fine for this requirement if English is the only supported display language).
+[F3.b] The game must be localized to support three different written languages. At least one language must use a logographicLinks to an external site. script, and at least one language must use a right-to-leftLinks to an external site. script.
+[F3.c] The game must be installable on a smartphone-class mobile device in the sense that there is a way to get it to show up as a home-screen icon that feels similar to other installed apps. (It is okay if you only get this to work on one specific device. You do not need to deploy the game in a way that anyone else can install it without your help because that might be much more difficult for some game platforms.)
+[F3.d] Once installed in a mobile device, the game can be launched and satisfactorily played even when the device is not connected to the internet.
+Tips:
+
+For games that are already playable in a web browser, you have a few options for how to make it installable:
+Make your existing webpage into installable Progressive Web App (PWA)Links to an external site.. Although this route will require writing the most new code (but still not very much), it will probably be the simplest option overall. Also, it will instantly give you coverage of several major mobile and desktop platforms all at once.
+Use CapacitorLinks to an external site. to package your webpage with a native browser in the form of a platform-specific native app.
+Use React NativeLinks to an external site. to package your webpage with a native browser in the form of a platform-specific native app (recommended only if you are curious about learning more about React after this class is over).
+If you are using a game making tool that can directly build native mobile apps (e.g. Unity or Godot), try that feature first. If you don't get results you like, try making a web build of your game. If you can get your game to run in the browser, then one of the options above will likely work for you.
