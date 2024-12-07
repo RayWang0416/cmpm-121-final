@@ -6,11 +6,11 @@ export default class PreloadScene extends Phaser.Scene {
   }
 
   preload() {
-    // 预加载内容
+    console.log("PreloadScene: Preloading...");
   }
 
   create() {
-    console.log("PreloadScene loaded");
-    this.scene.start("GameScene");
-  }  
+    console.log("PreloadScene: Loaded");
+    this.scene.start("GameScene"); // 切换到 GameScene
+  }
 }

@@ -22,6 +22,6 @@ module.exports = {
   devServer: {
     static: "./", // 确保指向项目根目录，或者具体到 index.html 所在位置
     hot: true,
-    port: 8080,
+    port: 3000,
   },
 };

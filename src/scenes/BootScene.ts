@@ -6,12 +6,11 @@ export default class BootScene extends Phaser.Scene {
   }
 
   preload() {
-    // 预加载内容
+    console.log("BootScene: Preloading...");
   }
 
   create() {
-    console.log("BootScene loaded");
-    this.scene.start("PreloadScene");
+    console.log("BootScene: Loaded");
+    this.scene.start("PreloadScene"); // 切换到 PreloadScene
   }
-  
 }
