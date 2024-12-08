@@ -6,8 +6,8 @@ import { GRID_SIZE, TILE_SIZE } from "./utils/Constants";
 
 const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
-    width: GRID_SIZE * TILE_SIZE + 100, // 宽度应至少为网格宽度 + 边距
-    height: GRID_SIZE * TILE_SIZE + 100, // 高度应至少为网格高度 + 边距
+    width: 1500, // 宽度应至少为网格宽度 + 边距
+    height: 1500, // 高度应至少为网格高度 + 边距
     backgroundColor: "#8B4513",
     parent: "game-container",
     scene: [BootScene, PreloadScene, GameScene],
