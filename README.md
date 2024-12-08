@@ -14,19 +14,23 @@
 ## Tools and Materials
 
 ### Engines, Libraries, Frameworks, and Platforms:
+-Phaser3, Typescript, Html5
 
+We Choose to use Phaser3 framework because it is more familiar to us. 
+
+We Choose Typescript instead of Javascript because TS is a superset of JS.
 
 ### Programming and Data Languages:
-Our project will primarily use **TypeScript** for the game logic. For styling, we will use **CSS**, ensuring a clean and responsive user interface. JSON may be used for data storage and exchange between systems.  
+- Our project will primarily use **TypeScript** for the game logic. For styling, we will use **CSS**. JSON may be used for data storage and exchange between systems.  
 
 ### Authoring Tools:
 - **Visual Studio Code (VS Code)**: Our IDE for coding.  
 - **Git**: Version control to manage our code and collaborate effectively.    
 
 ### Alternate Platform:
-If needed, we will explore creating a simplified standalone version of the game using **React.js** for the user interface. This alternate platform was chosen to experiment with a different UI library, offering additional flexibility and expanding our experience with modern front-end frameworks.  
+- If Phaser3 does not work well in the project, We will use Godot instead.
 
 ---
 
 ## Outlook
-- **Unique Goals**: We aim to focus on the better game play of the resource management game, and we would like to put more effort in UI design that satisfy players.
+- We wish to learn the implementation of a SAVE & LOAD system for game, and the Internal and External DSLs.
