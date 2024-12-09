@@ -51,8 +51,11 @@ We Choose Typescript instead of Javascript because TS is a superset of JS.
   We implemented this using an Array of Structures (AoS) format. Each cell is represented by 4 bytes:
 
   Byte 0: Sunlight (0–100)
+  
   Byte 1: Water (0–100)
+  
   Byte 2: Plant Type (0 = none, 1 = potato, 2 = carrot, 3 = cabbage)
+  
   Byte 3: Plant Level (0–3, 0 means no plant)
   
   This yields a layout like this:
