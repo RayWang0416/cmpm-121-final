@@ -46,21 +46,36 @@ interface GameState {
   actionsRemaining: number;
 }
 
+interface FullSaveData {
+  currentState: Omit<GameState,"gridData"> & {gridData:number[]};
+  undoStack: (Omit<GameState,"gridData"> & {gridData:number[]})[];
+  redoStack: (Omit<GameState,"gridData"> & {gridData:number[]})[];
+}
+
 export default class GameScene extends Phaser.Scene {
   private player!: Player;
   private grid: TileData[][] = [];
   private activeTile: TileData | null = null; 
+
+  // Current state
   private dayCount: number = 1;
-  private dayText!: Phaser.GameObjects.Text;
   private inventory: Inventory = { potato: 1, carrot: 1, cabbage: 1 }; 
-  private inventoryText!: Phaser.GameObjects.Text;
   private achievements: string[] = [];
+  private actionsRemaining: number = 10;
+  private gridData!: Uint8Array;
+
+  // UI elements
+  private dayText!: Phaser.GameObjects.Text;
+  private inventoryText!: Phaser.GameObjects.Text;
   private achievementsText!: Phaser.GameObjects.Text;
   private controlsText!: Phaser.GameObjects.Text;
-  private actionsRemaining: number = 10;
   private actionsText!: Phaser.GameObjects.Text;
 
-  private gridData!: Uint8Array;
+  // Undo/Redo stacks
+  private undoStack: GameState[] = [];
+  private redoStack: GameState[] = [];
+
+  // Offsets for gridData
   private readonly FIELDS_PER_CELL = 4;
   private readonly SUNLIGHT_OFFSET = 0;
   private readonly WATER_OFFSET = 1;
@@ -72,16 +87,19 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create() {
-    // 初始化数据
     this.gridData = new Uint8Array(GRID_SIZE * GRID_SIZE * this.FIELDS_PER_CELL);
-    this.createGrid();
-    this.createPlayer();
-    this.createNextDayButton();
-    this.createDayCounter();
-    this.createInventoryDisplay();
-    this.createAchievementsDisplay();
-    this.createControlsDisplay();
-    this.createActionsCounter();
+
+    // 初始化场景 (F1.c的方式)：
+    this.initNewGame();
+
+    // 尝试从自动存档加载 (F1.c)
+    const autoSaveData = localStorage.getItem("autoSave");
+    if (autoSaveData) {
+      const loadFromAutoSave = window.confirm("An autosave was found. Do you want to continue where you left off?");
+      if (loadFromAutoSave) {
+        this.loadGameFromJSON(autoSaveData);
+      }
+    }
 
     // 注册键盘事件
     if (this.input && this.input.keyboard) {
@@ -90,8 +108,7 @@ export default class GameScene extends Phaser.Scene {
       this.input.keyboard.on("keydown-B", () => this.performAction(() => this.plantOnCurrentTile("cabbage")));
       this.input.keyboard.on("keydown-H", () => this.performAction(() => this.harvestFromCurrentTile()));
 
-      // [F1.b]: 实现保存和加载的键盘事件
-      // 按 S 键保存游戏
+      // 手动保存
       this.input.keyboard.on("keydown-S", () => {
         const slotStr = window.prompt("Enter save slot number (e.g. 1, 2, 3):");
         if (slotStr) {
@@ -102,7 +119,7 @@ export default class GameScene extends Phaser.Scene {
         }
       });
 
-      // 按 L 键加载游戏
+      // 手动加载
       this.input.keyboard.on("keydown-L", () => {
         const slotStr = window.prompt("Enter load slot number (e.g. 1, 2, 3):");
         if (slotStr) {
@@ -112,9 +129,28 @@ export default class GameScene extends Phaser.Scene {
           }
         }
       });
+
+      // [F1.d] 撤销和重做
+      this.input.keyboard.on("keydown-U", () => this.undo());
+      this.input.keyboard.on("keydown-R", () => this.redo());
     } else {
       console.error("Keyboard input plugin is not initialized.");
     }
+  }
+
+  private initNewGame() {
+    this.undoStack = [];
+    this.redoStack = [];
+
+    this.createGrid();
+    this.createPlayer();
+    this.createNextDayButton();
+    this.createDayCounter();
+    this.createInventoryDisplay();
+    this.createAchievementsDisplay();
+    this.createControlsDisplay();
+    this.createActionsCounter();
+    this.updateActionsCounter();
   }
 
   private createActionsCounter() {
@@ -129,16 +165,72 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private performAction(action: () => void) {
-    if (this.actionsRemaining > 0) {
-      action();
-      this.actionsRemaining--;
-      this.updateActionsCounter();
+    // 在执行行动前将当前状态压入undoStack
+    this.pushCurrentStateToUndo();
+    // 执行行动
+    action();
+    // 清空redoStack
+    this.redoStack = [];
+    // 自动存档 (F1.c)
+    this.autoSaveGame();
+  }
 
-      if (this.actionsRemaining === 0) {
-        console.log("No more actions left for today!");
-      }
+  // 将当前状态复制并压入undoStack
+  private pushCurrentStateToUndo() {
+    this.undoStack.push(this.copyCurrentState());
+  }
+
+  private copyCurrentState(): GameState {
+    return {
+      dayCount: this.dayCount,
+      inventory: { ...this.inventory },
+      achievements: [...this.achievements],
+      gridData: new Uint8Array(this.gridData),
+      playerX: this.player ? this.player.x : this.cameras.main.width / 2,
+      playerY: this.player ? this.player.y : this.cameras.main.height / 2,
+      actionsRemaining: this.actionsRemaining,
+    };
+  }
+
+  private loadFromGameState(state: GameState) {
+    this.dayCount = state.dayCount;
+    this.inventory = { ...state.inventory };
+    this.achievements = [...state.achievements];
+    this.gridData = new Uint8Array(state.gridData);
+    this.player.setPosition(state.playerX, state.playerY);
+    this.actionsRemaining = state.actionsRemaining;
+
+    // 更新UI显示
+    this.dayText.setText(`Day: ${this.dayCount}`);
+    this.updateInventoryDisplay();
+    this.updateAchievementsDisplay();
+    this.updateAllTilesDisplay();
+    this.updateActionsCounter();
+  }
+
+  private undo() {
+    if (this.undoStack.length > 0) {
+      // 当前状态压入redoStack
+      this.redoStack.push(this.copyCurrentState());
+      // 从undoStack弹出状态并恢复
+      const prevState = this.undoStack.pop()!;
+      this.loadFromGameState(prevState);
+      this.autoSaveGame();
     } else {
-      console.error("You have no actions remaining for today!");
+      console.log("No more undo available!");
+    }
+  }
+
+  private redo() {
+    if (this.redoStack.length > 0) {
+      // 当前状态压入undoStack
+      this.undoStack.push(this.copyCurrentState());
+      // 从redoStack弹出状态并恢复
+      const nextState = this.redoStack.pop()!;
+      this.loadFromGameState(nextState);
+      this.autoSaveGame();
+    } else {
+      console.log("No more redo available!");
     }
   }
 
@@ -152,6 +244,8 @@ H - Harvest Plant
 Arrow Keys - Move Player
 S - Save Game
 L - Load Game
+U - Undo
+R - Redo
 `;
     this.controlsText = this.add.text(
       this.cameras.main.width - 160,
@@ -268,12 +362,14 @@ L - Load Game
 
     button.setInteractive();
     button.on("pointerdown", () => {
-      this.dayCount++;
-      this.actionsRemaining = 10;
-      this.updateActionsCounter();
-      this.dayText.setText(`Day: ${this.dayCount}`);
-      this.growPlants();
-      this.updateGridProperties();
+      this.performAction(() => {
+        this.dayCount++;
+        this.actionsRemaining = 10;
+        this.updateActionsCounter();
+        this.dayText.setText(`Day: ${this.dayCount}`);
+        this.growPlants();
+        this.updateGridProperties();
+      });
     });
   }
 
@@ -420,7 +516,7 @@ L - Load Game
     }
 
     const plantLevel = level as PlantLevel;
-    const harvestMap: Record<PlantLevel, number> = {1:1, 2:2, 3:4};
+    const harvestMap: Record<PlantLevel, number> = {1:1,2:2,3:4};
     const harvestAmount = harvestMap[plantLevel];
 
     let typeKey: "potato"|"carrot"|"cabbage" = "potato";
@@ -453,20 +549,20 @@ L - Load Game
   }
 
   update(time: number, delta: number) {
-    this.player.update(delta);
+    if (this.player) {
+      this.player.update(delta);
+      const offsetX = (this.cameras.main.width - GRID_SIZE * TILE_SIZE) / 2;
+      const offsetY = (this.cameras.main.height - GRID_SIZE * TILE_SIZE) / 2;
 
-    const offsetX = (this.cameras.main.width - GRID_SIZE * TILE_SIZE) / 2;
-    const offsetY = (this.cameras.main.height - GRID_SIZE * TILE_SIZE) / 2;
+      const gridX = Math.floor((this.player.x - offsetX) / TILE_SIZE);
+      const gridY = Math.floor((this.player.y - offsetY) / TILE_SIZE);
 
-    const gridX = Math.floor((this.player.x - offsetX) / TILE_SIZE);
-    const gridY = Math.floor((this.player.y - offsetY) / TILE_SIZE);
-
-    if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE) {
-      this.highlightTile(gridY, gridX);
+      if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE) {
+        this.highlightTile(gridY, gridX);
+      }
     }
   }
 
-  // 读写gridData的辅助函数
   private getCellIndex(row: number, col: number): number {
     return (row * GRID_SIZE + col) * this.FIELDS_PER_CELL;
   }
@@ -503,25 +599,13 @@ L - Load Game
     this.gridData[this.getCellIndex(row, col) + this.PLANT_LEVEL_OFFSET] = level;
   }
 
-  // [F1.b] 存档与读档
   private saveGame(slot: number) {
-    const state: GameState = {
-      dayCount: this.dayCount,
-      inventory: { ...this.inventory },
-      achievements: [...this.achievements],
-      gridData: new Uint8Array(this.gridData), // 拷贝当前的gridData
-      playerX: this.player.x,
-      playerY: this.player.y,
-      actionsRemaining: this.actionsRemaining,
+    const fullData: FullSaveData = {
+      currentState: this.gameStateToSaveFormat(this.copyCurrentState()),
+      undoStack: this.undoStack.map(s => this.gameStateToSaveFormat(s)),
+      redoStack: this.redoStack.map(s => this.gameStateToSaveFormat(s))
     };
-
-    // 将Uint8Array转换为普通数组以便JSON序列化
-    const saveData = {
-      ...state,
-      gridData: Array.from(state.gridData),
-    };
-
-    localStorage.setItem(`saveSlot${slot}`, JSON.stringify(saveData));
+    localStorage.setItem(`saveSlot${slot}`, JSON.stringify(fullData));
     console.log(`Game saved to slot ${slot}`);
   }
 
@@ -532,25 +616,52 @@ L - Load Game
       return;
     }
 
-    const saved = JSON.parse(dataStr) as Omit<GameState,"gridData"> & {gridData:number[]};
-    // 将number[]转换回Uint8Array
-    const loadedGridData = new Uint8Array(saved.gridData);
-
-    // 恢复状态
-    this.dayCount = saved.dayCount;
-    this.inventory = { ...saved.inventory };
-    this.achievements = [...saved.achievements];
-    this.gridData = loadedGridData;
-    this.player.setPosition(saved.playerX, saved.playerY);
-    this.actionsRemaining = saved.actionsRemaining;
-
-    // 更新UI显示
-    this.dayText.setText(`Day: ${this.dayCount}`);
-    this.updateInventoryDisplay();
-    this.updateAchievementsDisplay();
-    this.updateAllTilesDisplay();
-    this.updateActionsCounter();
-
+    this.loadGameFromJSON(dataStr);
     console.log(`Game loaded from slot ${slot}`);
+  }
+
+  private loadGameFromJSON(dataStr: string) {
+    const saved = JSON.parse(dataStr) as FullSaveData;
+
+    const currentState = this.saveFormatToGameState(saved.currentState);
+    this.loadFromGameState(currentState);
+
+    this.undoStack = saved.undoStack.map(s => this.saveFormatToGameState(s));
+    this.redoStack = saved.redoStack.map(s => this.saveFormatToGameState(s));
+
+    console.log("Game loaded from JSON with undo/redo stacks restored.");
+  }
+
+  private autoSaveGame() {
+    const fullData: FullSaveData = {
+      currentState: this.gameStateToSaveFormat(this.copyCurrentState()),
+      undoStack: this.undoStack.map(s => this.gameStateToSaveFormat(s)),
+      redoStack: this.redoStack.map(s => this.gameStateToSaveFormat(s))
+    };
+    localStorage.setItem("autoSave", JSON.stringify(fullData));
+  }
+
+  private gameStateToSaveFormat(state: GameState): Omit<GameState,"gridData"> & {gridData:number[]} {
+    return {
+      dayCount: state.dayCount,
+      inventory: { ...state.inventory },
+      achievements: [...state.achievements],
+      gridData: Array.from(state.gridData),
+      playerX: state.playerX,
+      playerY: state.playerY,
+      actionsRemaining: state.actionsRemaining
+    };
+  }
+
+  private saveFormatToGameState(obj: Omit<GameState,"gridData"> & {gridData:number[]}): GameState {
+    return {
+      dayCount: obj.dayCount,
+      inventory: { ...obj.inventory },
+      achievements: [...obj.achievements],
+      gridData: new Uint8Array(obj.gridData),
+      playerX: obj.playerX,
+      playerY: obj.playerY,
+      actionsRemaining: obj.actionsRemaining
+    };
   }
 }
