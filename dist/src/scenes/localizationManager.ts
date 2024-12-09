@@ -6,7 +6,7 @@ type Locale = 'en' | 'he' | 'zh';
 
 class LocalizationManager {
   private static instance: LocalizationManager;
-  private locale: Locale = 'en'; // 默认语言
+  private locale: Locale = 'en';
   private translations: Record<string, string> = {};
 
   private constructor() {
