@@ -1,4 +1,6 @@
 const path = require("path");
+const HtmlWebpackPlugin = require("html-webpack-plugin");
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 module.exports = {
   mode: "development",
@@ -6,6 +8,7 @@ module.exports = {
   output: {
     filename: "main.js",
     path: path.resolve(__dirname, "dist"),
+    clean: true // 可选，构建前清理dist目录
   },
   resolve: {
     extensions: [".ts", ".js"],
@@ -20,8 +23,18 @@ module.exports = {
     ],
   },
   devServer: {
-    static: "./", // 确保指向项目根目录，或者具体到 index.html 所在位置
+    static: {
+      directory: path.join(__dirname, "dist"),
+    },
     hot: true,
     port: 3000,
   },
+  plugins: [
+    new HtmlWebpackPlugin({ template: 'index.html' }),
+    new CopyWebpackPlugin({
+      patterns: [
+        { from: 'src/', to: 'src' }, // 假设yaml在src
+      ],
+    }),
+  ],
 };

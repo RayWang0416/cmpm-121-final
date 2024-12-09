@@ -1,0 +1,28 @@
+initial:
+  dayCount: 1
+  inventory:
+    potato: 3
+    carrot: 1
+    cabbage: 2
+  achievements: ["Green Thumb"]
+
+gridOverrides:
+  - row: 0
+    col: 0
+    sunlight: 80
+    water: 90
+    plantType: none
+    plantLevel: 1
+
+  - row: 2
+    col: 3
+    sunlight: 60
+    water: 30
+    plantType: none
+    plantLevel: 2
+
+  - row: 1
+    col: 1
+    sunlight: 50
+    water: 50
+    plantType: none

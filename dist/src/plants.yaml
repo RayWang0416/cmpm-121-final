@@ -1,0 +1,35 @@
+plants:
+  potato:
+    - level: 2
+      sunlight: 20
+      water: 20
+    - level: 3
+      sunlight: 20
+      water: 20
+
+  carrot:
+    - level: 2
+      sunlight: 60
+      water: 40
+      neighbors:
+        requiredNeighbors:
+          potato: 1
+          cabbage: 1
+    - level: 3
+      sunlight: 45
+      water: 20
+      neighbors:
+        requiredNeighbors:
+          potato: 1
+          cabbage: 1
+
+  cabbage:
+    - level: 2
+      sunlight: 55
+      water: 30
+    - level: 3
+      sunlight: 65
+      water: 20
+      neighbors:
+        requiredNeighbors:
+          potato: 2
