@@ -1,4 +1,4 @@
-import Phaser from "phaser";
+import Phaser from "phaser"; 
 import { GRID_SIZE, TILE_SIZE } from "../utils/Constants";
 import Player from "../objects/Player";
 import * as yaml from 'js-yaml';  
@@ -19,12 +19,56 @@ interface GrowthCondition {
 
 type GrowthMap = Partial<Record<PlantLevel, GrowthCondition>>;
 
-const growConditions: Record<PlantType, GrowthMap> = {
-  [PlantType.Potato]: {2: {sunlight:20, water:20}, 3:{sunlight:20, water:20}},
-  [PlantType.Carrot]: {2: {sunlight:60, water:40}, 3:{sunlight:45, water:20}},
-  [PlantType.Cabbage]:{2: {sunlight:55, water:30}, 3:{sunlight:65, water:20}},
-  [PlantType.None]: {}
+// Internal DSL
+// 定义一个用于构建植物生长条件的 DSL
+class PlantBuilder {
+  private conditions: Partial<Record<PlantLevel, GrowthCondition>> = {};
+
+  growthStage(level: PlantLevel, sunlight: number, water: number): PlantBuilder {
+    this.conditions[level] = { sunlight, water };
+    return this;
+  }
+
+  build(): GrowthMap {
+    // GrowthMap是Partial<Record<PlantLevel, GrowthCondition>>
+    return this.conditions; 
+  }
+}
+
+
+// 存放所有植物定义
+const plantDefinitions: Record<PlantType, GrowthMap> = {
+  [PlantType.None]: {},
+  [PlantType.Potato]: {},
+  [PlantType.Carrot]: {},
+  [PlantType.Cabbage]: {}
 };
+
+// 定义一个函数用于注册植物定义
+function definePlant(type: PlantType, definition: (b: PlantBuilder) => void) {
+  const builder = new PlantBuilder();
+  definition(builder);
+  plantDefinitions[type] = builder.build();
+}
+
+// 使用我们的 Internal DSL 来定义各种植物的生长条件
+definePlant(PlantType.Potato, b => {
+  b.growthStage(2, 20, 20)
+   .growthStage(3, 20, 20);
+});
+
+definePlant(PlantType.Carrot, b => {
+  b.growthStage(2, 60, 40)
+   .growthStage(3, 45, 20);
+});
+
+definePlant(PlantType.Cabbage, b => {
+  b.growthStage(2, 55, 30)
+   .growthStage(3, 65, 20);
+});
+
+// None 类型不需要定义，因为它没有生长条件
+plantDefinitions[PlantType.None] = {};
 
 interface Inventory {
   potato: number;
@@ -105,7 +149,6 @@ export default class GameScene extends Phaser.Scene {
 
   async create() {
     this.gridData = new Uint8Array(GRID_SIZE * GRID_SIZE * this.FIELDS_PER_CELL);
-    // Make sure inuse
     await this.initNewGame();
 
     const autoSaveData = localStorage.getItem("autoSave");
@@ -162,7 +205,7 @@ export default class GameScene extends Phaser.Scene {
       console.error("Error loading scenes.yaml:", error);
       return null;
     }
-  }  
+  }
 
   private async initNewGame() {
     this.undoStack = [];
@@ -492,6 +535,27 @@ R - Redo
     }
   }
 
+  private canPlantCarrotHere(row: number, col: number): boolean {
+    const directions = [
+      {dr: -1, dc: 0},
+      {dr: 1, dc: 0},
+      {dr: 0, dc: -1},
+      {dr: 0, dc: 1}
+    ];
+
+    for (const dir of directions) {
+      const newRow = row + dir.dr;
+      const newCol = col + dir.dc;
+      if (newRow >= 0 && newRow < GRID_SIZE && newCol >= 0 && newCol < GRID_SIZE) {
+        const neighborPlantType = this.getPlantType(newRow, newCol);
+        if (neighborPlantType === PlantType.Potato || neighborPlantType === PlantType.Cabbage) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   private plantOnCurrentTile(type: "potato" | "carrot" | "cabbage") {
     if (!this.activeTile) return;
 
@@ -512,6 +576,14 @@ R - Redo
     if (!conditions[type]) {
       console.error("This tile does not meet the planting conditions!");
       return;
+    }
+
+    if (type === "carrot") {
+      const adjacentHasPotatoOrCabbage = this.canPlantCarrotHere(row, col);
+      if (!adjacentHasPotatoOrCabbage) {
+        console.error("Cannot plant carrot here! Need an adjacent tile with Potato or Cabbage.");
+        return;
+      }
     }
 
     if (this.inventory[type] <= 0) {
@@ -542,7 +614,9 @@ R - Redo
         if (currentLevel < 1 || currentLevel > 3) continue;
 
         const nextLevel = (currentLevel + 1) as PlantLevel;
-        const cond = growConditions[plantType][nextLevel];
+
+        // 使用新的内部DSL定义中的plantDefinitions来获取生长条件
+        const cond = plantDefinitions[plantType][nextLevel];
         if (!cond) continue;
 
         const sunlight = this.getSunlight(row, col);
