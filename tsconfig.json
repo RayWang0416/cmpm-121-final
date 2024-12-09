@@ -3,7 +3,9 @@
       "target": "ES6",
       "module": "commonjs",
       "strict": true,
+      "resolveJsonModule": true,
       "esModuleInterop": true,
+      "allowSyntheticDefaultImports": true,
       "outDir": "./dist",
       "sourceMap": true
     },

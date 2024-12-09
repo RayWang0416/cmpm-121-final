@@ -1,100 +1,59 @@
-// src/localizationManager.ts
+import en from './en.json';
+import he from './he.json';
+import zh from './zh.json';
 
-import Phaser from "phaser";
+type Locale = 'en' | 'he' | 'zh';
 
-interface LocalizationData {
-  [key: string]: string;
-}
+class LocalizationManager {
+  private static instance: LocalizationManager;
+  private locale: Locale = 'en'; // 默认语言
+  private translations: Record<string, string> = {};
 
-export default class LocalizationManager {
-  private currentLanguage: string = "en";
-  private localizationData: LocalizationData = {};
-  private scene: Phaser.Scene;
-
-  private textsToUpdate: Phaser.GameObjects.Text[] = [];
-  private localizationCache: Record<string, LocalizationData> = {};
-
-  constructor(scene: Phaser.Scene) {
-    this.scene = scene;
-    this.loadLocalization(this.currentLanguage);
+  private constructor() {
+    this.loadLocale(this.locale);
   }
 
-  public async setLanguage(lang: string) {
-    if (lang === this.currentLanguage) return;
-    await this.loadLocalization(lang);
-    this.currentLanguage = lang;
-    this.updateAllTexts();
-    this.updateTextDirection();
-  }
-
-  private async loadLocalization(lang: string) {
-    if (this.localizationCache[lang]) {
-      this.localizationData = this.localizationCache[lang];
-      return;
+  public static getInstance(): LocalizationManager {
+    if (!LocalizationManager.instance) {
+      LocalizationManager.instance = new LocalizationManager();
     }
-    try {
-      const response = await fetch(`./dist/lang/${lang}.json`);
-      if (!response.ok) {
-        throw new Error(`Failed to load localization file: ${lang}.json`);
-      }
-      const data = await response.json();
-      this.localizationData = data;
-      this.localizationCache[lang] = data;
-    } catch (error) {
-      console.error(error);
+    return LocalizationManager.instance;
+  }
+
+  public setLocale(locale: Locale) {
+    this.locale = locale;
+    this.loadLocale(locale);
+  }
+
+  public getLocale(): Locale {
+    return this.locale;
+  }
+
+  private loadLocale(locale: Locale) {
+    switch (locale) {
+      case 'en':
+        this.translations = en;
+        break;
+      case 'he':
+        this.translations = he;
+        break;
+      case 'zh':
+        this.translations = zh;
+        break;
+      default:
+        this.translations = zh;
     }
   }
 
-  public getString(key: string, variables?: Record<string, any>): string {
-    let str = this.localizationData[key] || key;
+  public translate(key: string, variables?: Record<string, any>): string {
+    let text = this.translations[key] || key;
     if (variables) {
       for (const [varKey, varValue] of Object.entries(variables)) {
-        str = str.replace(`{${varKey}}`, varValue);
+        text = text.replace(`{${varKey}}`, String(varValue));
       }
     }
-    return str;
-  }
-
-  public registerText(textObject: Phaser.GameObjects.Text, key: string) {
-    (textObject as any).localizationKey = key;
-    (textObject as any).localizationVariables = {};
-    this.textsToUpdate.push(textObject);
-    // 设置初始文本
-    textObject.setText(this.getString(key, (textObject as any).localizationVariables));
-  }
-
-  public updateTextVariables(textObject: Phaser.GameObjects.Text, variables: Record<string, any>) {
-    (textObject as any).localizationVariables = variables;
-    const key = (textObject as any).localizationKey;
-    if (key) {
-      textObject.setText(this.getString(key, variables));
-    }
-  }
-
-  private updateAllTexts() {
-    this.textsToUpdate.forEach((textObj) => {
-      const key = (textObj as any).localizationKey;
-      const variables = (textObj as any).localizationVariables || {};
-      if (key) {
-        textObj.setText(this.getString(key, variables));
-      }
-    });
-  }
-
-  private updateTextDirection() {
-    const rtlLanguages = ["he"]; // Hebrew is RTL
-    if (rtlLanguages.includes(this.currentLanguage)) {
-      // 设置文本对齐方式为右对齐
-      this.textsToUpdate.forEach((textObj) => {
-        textObj.setOrigin(1, textObj.originY); // 右对齐
-        textObj.setAlign("right");
-      });
-    } else {
-      // 设置为左对齐
-      this.textsToUpdate.forEach((textObj) => {
-        textObj.setOrigin(0, textObj.originY); // 左对齐
-        textObj.setAlign("left");
-      });
-    }
+    return text;
   }
 }
+
+export default LocalizationManager;

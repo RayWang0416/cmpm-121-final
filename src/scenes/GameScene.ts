@@ -69,7 +69,6 @@ interface SceneConfig {
   }[];
 }
 
-// 用于读取plants.yaml的类型定义
 interface PlantLevelConfig {
   level: number;
   sunlight: number;
@@ -91,7 +90,6 @@ interface PlantsYAML {
   }
 }
 
-// Internal DSL: PlantBuilder和definePlant
 class PlantBuilder {
   private conditions: GrowthMap = {};
 
@@ -105,7 +103,6 @@ class PlantBuilder {
     return this;
   }
 
-  // 新增方法用于设置邻居条件
   neighborsCondition(level: PlantLevel, requiredNeighbors: Partial<Record<PlantType, number>>): PlantBuilder {
     if (!this.conditions[level]) {
       this.conditions[level] = { sunlight: 0, water: 0 };
@@ -133,6 +130,7 @@ function definePlant(type: PlantType, definition: (b: PlantBuilder) => void) {
 }
 
 export default class GameScene extends Phaser.Scene {
+  private localization: LocalizationManager;
   private player!: Player;
   private grid: {rectangle: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text;}[][] = [];
   private activeTile: {rectangle: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text;} | null = null; 
@@ -164,54 +162,55 @@ export default class GameScene extends Phaser.Scene {
 
   constructor() {
     super("GameScene");
+    this.localization = LocalizationManager.getInstance();
   }
 
   async create() {
     this.gridData = new Uint8Array(GRID_SIZE * GRID_SIZE * this.FIELDS_PER_CELL);
     await this.initNewGame();
+    
+    this.createMobileControls();
+    this.createLanguageSwitcher(); // 创建语言切换按钮
 
     const autoSaveData = localStorage.getItem("autoSave");
     if (autoSaveData) {
-      const loadFromAutoSave = window.confirm("An autosave was found. Do you want to continue where you left off?");
+      const loadFromAutoSave = window.confirm(this.localization.translate("autosaveFound"));
       if (loadFromAutoSave) {
         this.loadGameFromJSON(autoSaveData);
       }
     }
 
     if (this.input && this.input.keyboard) {
-      // Planting and harvesting are valid actions, return true on success
       this.input.keyboard.on("keydown-P", () => this.performAction(() => this.plantOnCurrentTile("potato")));
       this.input.keyboard.on("keydown-C", () => this.performAction(() => this.plantOnCurrentTile("carrot")));
       this.input.keyboard.on("keydown-B", () => this.performAction(() => this.plantOnCurrentTile("cabbage")));
       this.input.keyboard.on("keydown-H", () => this.performAction(() => this.harvestFromCurrentTile()));
 
-      // Save and Load are not counted as valid actions, but we still use performAction to maintain undo/redo logic
-      // If you don't want to decrement actionsRemaining, let the callback return false
       this.input.keyboard.on("keydown-S", () => {
         this.actionsRemaining++;
         this.performAction(() => {
-          const slotStr = window.prompt("Enter save slot number (e.g. 1, 2, 3):");
+          const slotStr = window.prompt(this.localization.translate("savePrompt"));
           if (slotStr) {
             const slot = parseInt(slotStr, 10);
             if (!isNaN(slot)) {
               this.saveGame(slot);
             }
           }
-          return true; // Valid action, decrement actionsRemaining
+          return true; 
         });
       });
 
       this.input.keyboard.on("keydown-L", () => {
         this.actionsRemaining++;
         this.performAction(() => {
-          const slotStr = window.prompt("Enter load slot number (e.g. 1, 2, 3):");
+          const slotStr = window.prompt(this.localization.translate("loadPrompt"));
           if (slotStr) {
             const slot = parseInt(slotStr, 10);
             if (!isNaN(slot)) {
               this.loadGame(slot);
             }
           }
-          return true; // Valid action
+          return true; 
         });
       });
 
@@ -226,6 +225,71 @@ export default class GameScene extends Phaser.Scene {
     } else {
       console.error("Keyboard input plugin is not initialized.");
     }
+  }
+
+  // 创建语言切换按钮
+  private createLanguageSwitcher() {
+    const languages = [
+      { code: 'en', label: 'EN' },
+      { code: 'he', label: 'HE' },
+      { code: 'zh', label: 'ZH' },
+    ];
+    const buttonWidth = 50;
+    const buttonHeight = 30;
+    const padding = 10;
+    const startX = this.cameras.main.width - buttonWidth - padding;
+    const startY = padding;
+
+    languages.forEach((lang, index) => {
+      const button = this.add.rectangle(
+        startX,
+        startY + index * (buttonHeight + padding),
+        buttonWidth,
+        buttonHeight,
+        0x000000,
+        0.7
+      ).setOrigin(0, 0).setInteractive();
+
+      const buttonText = this.add.text(
+        startX + buttonWidth / 2,
+        startY + index * (buttonHeight + padding) + buttonHeight / 2,
+        lang.label,
+        {
+          font: "16px Arial",
+          color: "#ffffff",
+        }
+      ).setOrigin(0.5, 0.5);
+
+      button.on("pointerdown", () => {
+        this.localization.setLocale(lang.code as 'en' | 'he' | 'zh');
+        this.updateAllLocalizedTexts();
+      });
+    });
+  }
+
+  private updateAllLocalizedTexts() {
+    const currentLocale = this.localization.getLocale();
+
+    // 更新控制说明
+    this.controlsText.setText(this.localization.translate("controls"));
+    this.controlsText.setStyle({
+      align: currentLocale === 'he' ? 'right' : 'left',
+    });
+
+    // 更新日计数
+    this.updateDayCounter();
+    
+    // 更新库存显示
+    this.updateInventoryDisplay();
+
+    // 更新成就显示
+    this.updateAchievementsDisplay();
+
+    // 更新行动计数
+    this.updateActionsCounter();
+
+    // 更新所有格子显示
+    this.updateAllTilesDisplay();
   }
 
   private async loadSceneConfigFromYAML(): Promise<any> {
@@ -243,7 +307,6 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  // Internal DSL
   private async loadPlantDefinitionsFromYAML(): Promise<void> {
     try {
       const response = await fetch('dist/plants.yaml');
@@ -253,7 +316,6 @@ export default class GameScene extends Phaser.Scene {
       const text = await response.text();
       const data = yaml.load(text) as PlantsYAML;
 
-      // Define plants based on YAML data
       const plantTypes: PlantType[] = [PlantType.Potato, PlantType.Carrot, PlantType.Cabbage];
       for (const type of plantTypes) {
         const typeName = PlantType[type].toLowerCase();
@@ -295,10 +357,7 @@ export default class GameScene extends Phaser.Scene {
     this.undoStack = [];
     this.redoStack = [];
 
-    // Load plant definitions first
     await this.loadPlantDefinitionsFromYAML();
-
-    // Then load scene data
     const yamlData = await this.loadSceneConfigFromYAML();
 
     if (yamlData && yamlData.initial) {
@@ -347,7 +406,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.createPlayer();
     this.createNextDayButton();
-    this.createDayCounter();
+    this.updateDayCounter();
     this.createInventoryDisplay();
     this.createAchievementsDisplay();
     this.createControlsDisplay();
@@ -357,23 +416,19 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private createActionsCounter() {
-    this.actionsText = this.add.text(10, 200, `Actions Remaining: ${this.actionsRemaining}`, {
+    this.actionsText = this.add.text(10, 200, this.localization.translate("actionsRemaining", { actions: this.actionsRemaining }), {
       font: "16px Arial",
       color: "#ffffff",
     });
   }
 
   private updateActionsCounter() {
-    this.actionsText.setText(`Actions Remaining: ${this.actionsRemaining}`);
+    this.actionsText.setText(this.localization.translate("actionsRemaining", { actionsRemaining: this.actionsRemaining }));
   }
 
-  // performAction now requires a callback that returns boolean
-  // For non-valid actions, the callback returns false, so actionsRemaining is not decremented
-  // For valid actions (planting, harvesting), the callback returns true to decrement actionsRemaining
   private performAction(action: () => boolean, countAsAction: boolean = true) {
-    // If it's an action that consumes an action and no actions remain, return immediately
     if (countAsAction && this.actionsRemaining <= 0) {
-      console.error("No actions remaining!");
+      console.error(this.localization.translate("noActionsRemaining"));
       return;
     }
   
@@ -382,13 +437,11 @@ export default class GameScene extends Phaser.Scene {
     this.redoStack = [];
   
     if (actionSucceeded) {
-      // If action succeeded and counts as an action, decrement actionsRemaining
       if (countAsAction) {
         this.actionsRemaining = Math.max(0, this.actionsRemaining - 1);
         this.updateActionsCounter();
       }
     } else {
-      // If action failed, rollback
       const prevState = this.undoStack.pop();
       if (prevState) {
         this.loadFromGameState(prevState);
@@ -397,7 +450,6 @@ export default class GameScene extends Phaser.Scene {
   
     this.autoSaveGame();
   }
-  
 
   private pushCurrentStateToUndo() {
     this.undoStack.push(this.copyCurrentState());
@@ -423,7 +475,7 @@ export default class GameScene extends Phaser.Scene {
     this.player.setPosition(state.playerX, state.playerY);
     this.actionsRemaining = state.actionsRemaining;
 
-    this.dayText.setText(`Day: ${this.dayCount}`);
+    this.dayText.setText(this.localization.translate("day", { day: this.dayCount }));
     this.updateInventoryDisplay();
     this.updateAchievementsDisplay();
     this.updateAllTilesDisplay();
@@ -437,10 +489,10 @@ export default class GameScene extends Phaser.Scene {
       this.loadFromGameState(prevState);
       this.autoSaveGame();
     } else {
-      console.log("No more undo available!");
+      console.log(this.localization.translate("undoUnavailable"));
     }
   }
-  
+
   private redo() {
     if (this.redoStack.length > 0) {
       this.undoStack.push(this.copyCurrentState());
@@ -448,23 +500,12 @@ export default class GameScene extends Phaser.Scene {
       this.loadFromGameState(nextState);
       this.autoSaveGame();
     } else {
-      console.log("No more redo available!");
+      console.log(this.localization.translate("redoUnavailable"));
     }
-  }  
+  }
 
   private createControlsDisplay() {
-    const text = `
-Controls:
-P - Plant Potato 
-C - Plant Carrot 
-B - Plant Cabbage 
-H - Harvest Plant 
-Arrow Keys - Move Player
-S - Save Game 
-L - Load Game 
-U - Undo
-R - Redo 
-    `;
+    const text = this.localization.translate("controls");
     this.controlsText = this.add.text(
       this.cameras.main.width - 200,
       50,
@@ -472,30 +513,34 @@ R - Redo
       {
         font: "16px Arial",
         color: "#ffffff",
-        align: "left",
+        align: this.localization.getLocale() === 'he' ? 'right' : 'left',
       }
     );
     this.controlsText.setOrigin(0, 0);
   }
 
   private createAchievementsDisplay() {
-    this.achievementsText = this.add.text(10, 250, "Achievements:\n", {
+    this.achievementsText = this.add.text(10, 250, this.localization.translate("achievements", { achievements: this.achievements.join("\n") }), {
       font: "16px Arial",
       color: "#ffffff",
+      align: this.localization.getLocale() === 'he' ? 'right' : 'left',
+      wordWrap: { width: 180, useAdvancedWrap: true }
     });
   }
 
-  private updateAchievements(type: "potato" | "carrot" | "cabbage") {
+  private updateAchievements(type?: "potato" | "carrot" | "cabbage") {
     const thresholds = [
       { count: 10, title: `${type} master` },
       { count: 15, title: `${type} god` },
       { count: 20, title: `${type} legend` },
     ];
 
-    for (const threshold of thresholds) {
-      if (this.inventory[type] >= threshold.count && !this.achievements.includes(threshold.title)) {
-        this.achievements.push(threshold.title);
-        this.showAchievement(threshold.title);
+    if (type) {
+      for (const threshold of thresholds) {
+        if (this.inventory[type] >= threshold.count && !this.achievements.includes(threshold.title)) {
+          this.achievements.push(threshold.title);
+          this.showAchievement(threshold.title);
+        }
       }
     }
 
@@ -506,12 +551,13 @@ R - Redo
     const achievementText = this.add.text(
       this.cameras.main.width / 2,
       this.cameras.main.height / 2,
-      `Achievement Unlocked!\n${title}`,
+      this.localization.translate("achievementUnlocked", { title }),
       {
         font: "20px Arial",
         color: "#ffffff",
         backgroundColor: "#000000",
         padding: { left: 10, right: 10, top: 5, bottom: 5 },
+        align: this.localization.getLocale() === 'he' ? 'right' : 'left',
       }
     );
     achievementText.setOrigin(0.5, 0.5);
@@ -522,9 +568,10 @@ R - Redo
   }
 
   private updateAchievementsDisplay() {
-    this.achievementsText.setText(
-      `Achievements:\n${this.achievements.join("\n")}`
-    );
+    this.achievementsText.setText(this.localization.translate("achievements", { achievements: this.achievements.join("\n") }));
+    this.achievementsText.setStyle({
+      align: this.localization.getLocale() === 'he' ? 'right' : 'left',
+    });
   }
 
   private createGrid() {
@@ -550,10 +597,12 @@ R - Redo
 
         const textX = x - TILE_SIZE / 2 + 5;
         const textY = y - TILE_SIZE / 2 + 5;
-        const text = this.add.text(textX, textY, this.getTileInfoString(row, col), {
+        const tileInfo = this.getTileInfoString(row, col);
+        const text = this.add.text(textX, textY, tileInfo, {
           font: "14px Arial",
           color: "#ffffff",
-          align: "left",
+          align: this.localization.getLocale() === 'he' ? 'right' : 'left',
+          wordWrap: { width: TILE_SIZE - 10, useAdvancedWrap: true }
         });
         text.setOrigin(0, 0);
 
@@ -570,21 +619,21 @@ R - Redo
   }
 
   private createNextDayButton() {
-    const button = this.add.text(150, 50, "Next Day", {
+    const button = this.add.text(150, 50, this.localization.translate("nextDay"), {
       font: "20px Arial",
       backgroundColor: "#000000",
       color: "#ffffff",
       padding: { left: 10, right: 10, top: 5, bottom: 5 },
+      align: this.localization.getLocale() === 'he' ? 'right' : 'left',
     });
 
     button.setInteractive();
     button.on("pointerdown", () => {
-      // Next Day is not counted as a valid action, so countAsAction=false
       this.performAction(() => {
         this.dayCount++;
         this.actionsRemaining = 10;
         this.updateActionsCounter();
-        this.dayText.setText(`Day: ${this.dayCount}`);
+        this.dayText.setText(this.localization.translate("day", { day: this.dayCount }));
         this.growPlants();
         this.updateGridProperties();
         return true; 
@@ -592,26 +641,43 @@ R - Redo
     });
   }
 
-  private createDayCounter() {
-    this.dayText = this.add.text(10, 50, `Day: ${this.dayCount}`, {
-      font: "20px Arial",
-      color: "#ffffff",
+  private updateDayCounter() {
+    if (!this.dayText) {
+      this.dayText = this.add.text(10, 50, "", {
+        font: "20px Arial",
+        color: "#ffffff",
+      });
+    }
+  
+    this.dayText.setText(this.localization.translate("day", { day: this.dayCount }));
+    this.dayText.setStyle({
+      align: this.localization.getLocale() === 'he' ? 'right' : 'left',
     });
   }
+  
 
   private createInventoryDisplay() {
-    this.inventoryText = this.add.text(10, 100, this.getInventoryString(), {
+    this.inventoryText = this.add.text(10, 100, this.localization.translate("inventory", this.getInventoryVariables()), {
       font: "16px Arial",
       color: "#ffffff",
+      align: this.localization.getLocale() === 'he' ? 'right' : 'left',
+      wordWrap: { width: 180, useAdvancedWrap: true }
     });
   }
 
-  private getInventoryString(): string {
-    return `Inventory:\n🥔 Potato: ${this.inventory.potato}\n🥕 Carrot: ${this.inventory.carrot}\n🥬 Cabbage: ${this.inventory.cabbage}`;
+  private getInventoryVariables(): Record<string, any> {
+    return {
+      potato: this.inventory.potato,
+      carrot: this.inventory.carrot,
+      cabbage: this.inventory.cabbage
+    };
   }
 
   private updateInventoryDisplay() {
-    this.inventoryText.setText(this.getInventoryString());
+    this.inventoryText.setText(this.localization.translate("inventory", this.getInventoryVariables()));
+    this.inventoryText.setStyle({
+      align: this.localization.getLocale() === 'he' ? 'right' : 'left',
+    });
   }
 
   private updateGridProperties() {
@@ -635,15 +701,14 @@ R - Redo
 
     let str = `☀️ ${sunlight}\n💧 ${water}`;
     if (plantType !== PlantType.None) {
-      const typeStr = (plantType === PlantType.Potato) ? "Potato" :
-                      (plantType === PlantType.Carrot) ? "Carrot" : "Cabbage";
+      const typeStr = (plantType === PlantType.Potato) ? this.localization.translate("Potato") :
+                      (plantType === PlantType.Carrot) ? this.localization.translate("Carrot") : this.localization.translate("Cabbage");
       str += `\n🌱 ${typeStr} L${plantLevel}`;
 
-      // Display neighbor conditions (only needed when planting)
       const growthCondition = plantDefinitions[plantType][plantLevel as PlantLevel];
       if (growthCondition && growthCondition.neighbors && growthCondition.neighbors.requiredNeighbors) {
         const neighborConditions = Object.entries(growthCondition.neighbors.requiredNeighbors)
-          .map(([type, count]) => `${PlantType[Number(type)]}: ${count}`)
+          .map(([t, count]) => `${this.getPlantTypeString(Number(t) as PlantType)}: ${count}`)
           .join(", ");
         str += `\n🔗 ${neighborConditions}`;
       }
@@ -651,10 +716,27 @@ R - Redo
     return str;
   }
 
+  private getPlantTypeString(type: PlantType): string {
+    switch (type) {
+      case PlantType.Potato:
+        return this.localization.translate("Potato");
+      case PlantType.Carrot:
+        return this.localization.translate("Carrot");
+      case PlantType.Cabbage:
+        return this.localization.translate("Cabbage");
+      default:
+        return this.localization.translate("None");
+    }
+  }
+
   private updateAllTilesDisplay() {
     for (let row = 0; row < GRID_SIZE; row++) {
       for (let col = 0; col < GRID_SIZE; col++) {
-        this.grid[row][col].text.setText(this.getTileInfoString(row, col));
+        const tileInfo = this.getTileInfoString(row, col);
+        this.grid[row][col].text.setText(tileInfo);
+        this.grid[row][col].text.setStyle({
+          align: this.localization.getLocale() === 'he' ? 'right' : 'left',
+        });
       }
     }
   }
@@ -666,7 +748,7 @@ R - Redo
     const water = this.getWater(row, col);
 
     if (this.getPlantType(row, col) !== PlantType.None) {
-      console.error("This tile already has a plant!");
+      console.error(this.localization.translate("noPlantHere"));
       return false;
     }
 
@@ -677,42 +759,41 @@ R - Redo
     };
 
     if (!conditions[type]) {
-      console.error("This tile does not meet the planting conditions!");
+      console.error(this.localization.translate("conditionsNotMet"));
       return false;
     }
 
-    // Check neighbor conditions
     const plantTypeEnum = (type === "potato") ? PlantType.Potato : 
                           (type === "carrot") ? PlantType.Carrot : PlantType.Cabbage;
     
     const plantGrowthMap = plantDefinitions[plantTypeEnum];
-    const currentLevel = 1 as PlantLevel; // Assume initial level is 1
+    const currentLevel = 1 as PlantLevel;
     const growthCondition = plantGrowthMap[currentLevel];
     
     if (growthCondition && growthCondition.neighbors && growthCondition.neighbors.requiredNeighbors) {
       const { requiredNeighbors } = growthCondition.neighbors;
       let canPlant = true;
 
+      const directions = [
+        {dr: -1, dc: 0},
+        {dr: 1, dc: 0},
+        {dr: 0, dc: -1},
+        {dr: 0, dc: 1},
+        {dr: -1, dc: -1},
+        {dr: -1, dc: 1},
+        {dr: 1, dc: -1},
+        {dr: 1, dc: 1},
+      ];
+
       for (const [neighborType, requiredCount] of Object.entries(requiredNeighbors)) {
         const typeEnum = Number(neighborType) as PlantType;
         let count = 0;
-        const directions = [
-          {dr: -1, dc: 0},
-          {dr: 1, dc: 0},
-          {dr: 0, dc: -1},
-          {dr: 0, dc: 1},
-          {dr: -1, dc: -1},
-          {dr: -1, dc: 1},
-          {dr: 1, dc: -1},
-          {dr: 1, dc: 1},
-        ];
-
         for (const dir of directions) {
           const newRow = row + dir.dr;
           const newCol = col + dir.dc;
           if (newRow >= 0 && newRow < GRID_SIZE && newCol >= 0 && newCol < GRID_SIZE) {
-            const neighborType = this.getPlantType(newRow, newCol);
-            if (neighborType === typeEnum) {
+            const neighborPlantType = this.getPlantType(newRow, newCol);
+            if (neighborPlantType === typeEnum) {
               count++;
               if (count >= requiredCount) break;
             }
@@ -721,18 +802,16 @@ R - Redo
 
         if (count < requiredCount) {
           canPlant = false;
-          console.error(`Cannot plant ${type} here! Requires at least ${requiredCount} neighboring ${PlantType[typeEnum]}(s).`);
+          console.error(this.localization.translate("insufficientNeighbors", { type, count: requiredCount, plant: this.getPlantTypeString(typeEnum) }));
           break;
         }
       }
 
-      if (!canPlant) {
-        return false;
-      }
+      if (!canPlant) return false;
     }
 
     if (this.inventory[type] <= 0) {
-      console.error(`No ${type} left in inventory!`);
+      console.error(this.localization.translate("noInventory", { type }));
       return false;
     }
 
@@ -741,14 +820,12 @@ R - Redo
     this.inventory[type]--;
     this.updateInventoryDisplay();
 
-    const plantEnum = (type === "potato") ? PlantType.Potato : 
-                      (type === "carrot") ? PlantType.Carrot : PlantType.Cabbage;
-
+    const plantEnum = plantTypeEnum;
     this.setPlantType(row, col, plantEnum);
     this.setPlantLevel(row, col, 1);
     this.updateAllTilesDisplay();
 
-    return true; // Successfully planted, return true
+    return true; 
   }  
 
   private growPlants() {
@@ -764,31 +841,30 @@ R - Redo
         const cond = plantDefinitions[plantType][nextLevel];
         if (!cond) continue;
 
-        // Check neighbor conditions
         if (cond.neighbors && cond.neighbors.requiredNeighbors) {
           const { requiredNeighbors } = cond.neighbors;
           let canGrow = true;
 
+          const directions = [
+            {dr: -1, dc: 0},
+            {dr: 1, dc: 0},
+            {dr: 0, dc: -1},
+            {dr: 0, dc: 1},
+            {dr: -1, dc: -1},
+            {dr: -1, dc: 1},
+            {dr: 1, dc: -1},
+            {dr: 1, dc: 1},
+          ];
+
           for (const [neighborType, requiredCount] of Object.entries(requiredNeighbors)) {
             const typeEnum = Number(neighborType) as PlantType;
             let count = 0;
-            const directions = [
-              {dr: -1, dc: 0},
-              {dr: 1, dc: 0},
-              {dr: 0, dc: -1},
-              {dr: 0, dc: 1},
-              {dr: -1, dc: -1},
-              {dr: -1, dc: 1},
-              {dr: 1, dc: -1},
-              {dr: 1, dc: 1},
-            ];
-
             for (const dir of directions) {
               const newRow = row + dir.dr;
               const newCol = col + dir.dc;
               if (newRow >= 0 && newRow < GRID_SIZE && newCol >= 0 && newCol < GRID_SIZE) {
-                const neighborType = this.getPlantType(newRow, newCol);
-                if (neighborType === typeEnum) {
+                const neighborPlantType = this.getPlantType(newRow, newCol);
+                if (neighborPlantType === typeEnum) {
                   count++;
                   if (count >= requiredCount) break;
                 }
@@ -797,7 +873,7 @@ R - Redo
 
             if (count < requiredCount) {
               canGrow = false;
-              console.log(`Plant at (${row}, ${col}) cannot grow to level ${nextLevel} due to insufficient ${PlantType[typeEnum]} neighbors.`);
+              console.log(this.localization.translate("plantCannotGrow", { row, col, level: nextLevel, plant: this.getPlantTypeString(typeEnum) }));
               break;
             }
           }
@@ -821,7 +897,7 @@ R - Redo
 
   private harvestFromCurrentTile(): boolean {
     if (!this.activeTile) {
-      console.error("No active tile!");
+      console.error(this.localization.translate("noActiveTile"));
       return false;
     }
   
@@ -829,12 +905,12 @@ R - Redo
     const plantType = this.getPlantType(row, col);
     const level = this.getPlantLevel(row, col);
     if (plantType === PlantType.None) {
-      console.error("No plant to harvest!");
+      console.error(this.localization.translate("noPlantToHarvest"));
       return false;
     }
   
     if (level < 1 || level > 3) {
-      console.error("Invalid plant level.");
+      console.error(this.localization.translate("invalidPlantLevel"));
       return false;
     }
   
@@ -852,8 +928,8 @@ R - Redo
     this.updateAchievements(typeKey);
     this.updateAllTilesDisplay();
   
-    return true; // Successfully harvested, return true
-  }  
+    return true; 
+  }
 
   private getActiveTilePosition(): {row:number, col:number} {
     const offsetX = (this.cameras.main.width - GRID_SIZE * TILE_SIZE) / 2;
@@ -930,18 +1006,18 @@ R - Redo
       redoStack: this.redoStack.map(s => this.gameStateToSaveFormat(s))
     };
     localStorage.setItem(`saveSlot${slot}`, JSON.stringify(fullData));
-    console.log(`Game saved to slot ${slot}`);
+    console.log(this.localization.translate("gameSaved", { slot }));
   }
 
   private loadGame(slot: number) {
     const dataStr = localStorage.getItem(`saveSlot${slot}`);
     if (!dataStr) {
-      console.error(`No save found in slot ${slot}`);
+      console.error(this.localization.translate("noSaveFound", { slot }));
       return;
     }
 
     this.loadGameFromJSON(dataStr);
-    console.log(`Game loaded from slot ${slot}`);
+    console.log(this.localization.translate("gameLoaded", { slot }));
   }
 
   private loadGameFromJSON(dataStr: string) {
@@ -953,7 +1029,7 @@ R - Redo
     this.undoStack = saved.undoStack.map(s => this.saveFormatToGameState(s));
     this.redoStack = saved.redoStack.map(s => this.saveFormatToGameState(s));
 
-    console.log("Game loaded from JSON with undo/redo stacks restored.");
+    console.log(this.localization.translate("gameLoadedWithUndoRedo"));
   }
 
   private autoSaveGame() {
@@ -988,4 +1064,102 @@ R - Redo
       actionsRemaining: obj.actionsRemaining
     };
   }
+
+  private createMobileControls() {
+    const buttonStyle = {
+    font: "16px Arial",
+    backgroundColor: "#000000",
+    color: "#ffffff",
+    padding: { left: 10, right: 10, top: 5, bottom: 5 }
+    };
+  
+    const plantPotatoBtn = this.add.text(10, 500, "Plant Potato", buttonStyle).setInteractive();
+    plantPotatoBtn.on("pointerdown", () => {
+    this.performAction(() => this.plantOnCurrentTile("potato"));
+     });
+     
+    const plantCarrotBtn = this.add.text(10, 530, "Plant Carrot", buttonStyle).setInteractive();
+    plantCarrotBtn.on("pointerdown", () => {
+    this.performAction(() => this.plantOnCurrentTile("carrot"));
+    });
+    
+    const plantCabbageBtn = this.add.text(10, 560, "Plant Cabbage", buttonStyle).setInteractive();
+    plantCabbageBtn.on("pointerdown", () => {
+    this.performAction(() => this.plantOnCurrentTile("cabbage"));
+    });
+    
+    const harvestBtn = this.add.text(10, 590, "Harvest", buttonStyle).setInteractive();
+    harvestBtn.on("pointerdown", () => {
+    this.performAction(() => this.harvestFromCurrentTile());
+    });
+  
+    const saveBtn = this.add.text(10, 620, "Save", buttonStyle).setInteractive();
+    saveBtn.on("pointerdown", () => {
+    this.actionsRemaining++;
+    this.performAction(() => {
+    const slotStr = window.prompt("Enter save slot number (e.g. 1, 2, 3):");
+    if (slotStr) {
+    const slot = parseInt(slotStr, 10);
+    if (!isNaN(slot)) {
+    this.saveGame(slot);
+    }
+    }
+    return true;
+    });
+    });
+
+    const loadBtn = this.add.text(10, 650, "Load", buttonStyle).setInteractive();
+    loadBtn.on("pointerdown", () => {
+    this.actionsRemaining++;
+    this.performAction(() => {
+    const slotStr = window.prompt("Enter load slot number (e.g. 1, 2, 3):");
+    if (slotStr) {
+    const slot = parseInt(slotStr, 10);
+    if (!isNaN(slot)) {
+    this.loadGame(slot);
+    }
+    }
+    return true;
+   });
+  });
+    const undoBtn = this.add.text(10, 680, "Undo", buttonStyle).setInteractive();
+    undoBtn.on("pointerdown", () => {
+    this.undo();
+    });
+    
+    const redoBtn = this.add.text(10, 710, "Redo", buttonStyle).setInteractive();
+    redoBtn.on("pointerdown", () => {
+      this.redo();
+    });
+    
+    const moveDistance = TILE_SIZE;  
+    const upBtn = this.add.text(60, 800, "↑", buttonStyle).setInteractive();
+    upBtn.on("pointerdown", () => {
+      if (this.player) {
+        this.player.y -= moveDistance;
+      }
+    });
+
+    const downBtn = this.add.text(60, 860, "↓", buttonStyle).setInteractive();
+    downBtn.on("pointerdown", () => {
+    if (this.player) {
+    this.player.y += moveDistance;
+    }
+    });
+
+    const leftBtn = this.add.text(20, 830, "←", buttonStyle).setInteractive();
+    leftBtn.on("pointerdown", () => {
+    if (this.player) {
+    this.player.x -= moveDistance;
+    }
+    });
+
+    const rightBtn = this.add.text(100, 830, "→", buttonStyle).setInteractive();
+    rightBtn.on("pointerdown", () => {
+    if (this.player) {
+    this.player.x += moveDistance;
+    }
+    });
+  }
 }
+
