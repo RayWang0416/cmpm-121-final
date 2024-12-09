@@ -97,7 +97,7 @@ Implementing F1 made us consider how the player's interaction with the game’s 
 - No major changes were made
 
 ### External DSL for Scenario Design
-For our external DSL, we decided to use YAML as the underlying data representation. Designers can write YAML files to define initial conditions, inventory levels, achievements, specific overrides for certain grid cells, and even scheduled events and progression logic.
+For our external DSL, we decided to use YAML as the underlying data representation. Designers can write YAML files to define initial conditions, inventory, achievements, and specific overrides for certain grid cells.
 
 ```Typescript
 
