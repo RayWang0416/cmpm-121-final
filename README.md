@@ -58,10 +58,8 @@ We Choose Typescript instead of Javascript because TS is a superset of JS.
         This yields a layout like this:
           [Cell0:Sun,Water,Type,Level][Cell1:Sun,Water,Type,Level]...[CellN:Sun,Water,Type,Level]
 
-        ![F1.a data structure diagram](./memory.png)
-        ![image](https://github.com/user-attachments/assets/55819f53-74f2-469f-8236-d715b21607a2)
+  ![F1.a data structure diagram](./memory.png)
 
-  
         Thus, (row * GRID_SIZE + col)*4 gives the starting index for a cell. We chose AoS because it keeps all data for a single tile adjacent, making it straightforward to update and display each tile.
   
 - f1.b: We serialize dayCount, inventory, achievements, actionsRemaining, gridData, and now also undoStack/redoStack into JSON and store them in localStorage. The player can choose a slot to save and load from.
