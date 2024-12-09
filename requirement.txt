@@ -59,3 +59,24 @@ Make your existing webpage into installable Progressive Web App (PWA)Links to an
 Use CapacitorLinks to an external site. to package your webpage with a native browser in the form of a platform-specific native app.
 Use React NativeLinks to an external site. to package your webpage with a native browser in the form of a platform-specific native app (recommended only if you are curious about learning more about React after this class is over).
 If you are using a game making tool that can directly build native mobile apps (e.g. Unity or Godot), try that feature first. If you don't get results you like, try making a web build of your game. If you can get your game to run in the browser, then one of the options above will likely work for you.
+
+
+Crops that can be planted : Potatoes, Carrots, Cabbages:
+
+Potato
+
+Level 1: Requires 0 sunlight and 20 water; harvestable to gain 1 potato.
+Level 1 → Level 2: Requires 20 sunlight and 20 water; harvestable to gain 2 potatoes.
+Level 2 → Level 3: Requires 20 sunlight and 20 water; harvestable to gain 4 potatoes.
+
+Carrot
+
+Level 1: Requires 0 sunlight and 20 water; harvestable to gain 1 carrot.
+Level 1 → Level 2: Requires 60 sunlight and 40 water; harvestable to gain 2 carrots.
+Level 2 → Level 3: Requires 45 sunlight and 20 water; harvestable to gain 4 carrots.
+
+Cabbage
+
+Level 1: Requires 0 sunlight and 70 water; harvestable to gain 1 cabbage.
+Level 1 → Level 2: Requires 55 sunlight and 30 water; harvestable to gain 2 cabbages.
+Level 2 → Level 3: Requires 65 sunlight and 20 water; harvestable to gain 4 cabbages.

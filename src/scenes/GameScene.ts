@@ -1,15 +1,10 @@
 import Phaser from "phaser";
 import { GRID_SIZE, TILE_SIZE } from "../utils/Constants";
 import Player from "../objects/Player";
+import { TileManager, TileData } from "../objects/Tile";
+import AchievementsManager from "../utils/Achievements";
 
-interface TileData {
-  rectangle: Phaser.GameObjects.Rectangle;
-  sunlight: number;
-  water: number;
-  text: Phaser.GameObjects.Text;
-  plant?: { type: "potato" | "carrot" | "cabbage"; level: 1 | 2 | 3 };
-}
-
+// Interface to represent the player's inventory
 interface Inventory {
   potato: number;
   carrot: number;
@@ -17,127 +12,104 @@ interface Inventory {
 }
 
 export default class GameScene extends Phaser.Scene {
-  private player!: Player;
-  private grid: TileData[][] = [];
-  private activeTile: TileData | null = null;
-  private dayCount: number = 1;
-  private dayText!: Phaser.GameObjects.Text;
-  private inventory: Inventory = { potato: 1, carrot: 1, cabbage: 1 };
-  private inventoryText!: Phaser.GameObjects.Text;
-  private achievements: string[] = [];
-  private achievementsText!: Phaser.GameObjects.Text;
+  private player!: Player; // The player object
+  private tileManager!: TileManager; // Tile manager for grid handling
+  private achievementsManager!: AchievementsManager; // Achievements manager
+  private grid: TileData[][] = []; // 2D array representing the grid of tiles
+  private activeTile: TileData | null = null; // The tile the player is currently interacting with
+  private dayCount: number = 1; // Counter for the current day
+  private dayText!: Phaser.GameObjects.Text; // Text to display the current day
+  private inventory: Inventory = { potato: 1, carrot: 1, cabbage: 1 }; // Initial inventory
+  private inventoryText!: Phaser.GameObjects.Text; // Text to display the inventory
+  private controlsText!: Phaser.GameObjects.Text; // Text to display control instructions
+  private actionsRemaining: number = 10; // Limit of actions per day
+  private actionsText!: Phaser.GameObjects.Text; // Text to display remaining actions
 
   constructor() {
     super("GameScene");
   }
 
   create() {
-    this.createGrid();
+    // Initialize managers
+    this.tileManager = new TileManager(this);
+    this.achievementsManager = new AchievementsManager(this);
+
+    // Set up the game environment
+    this.grid = this.tileManager.createGrid(GRID_SIZE, TILE_SIZE);
     this.createPlayer();
     this.createNextDayButton();
     this.createDayCounter();
     this.createInventoryDisplay();
-    this.createAchievementsDisplay();
+    this.createActionsCounter();
+    this.createControlsDisplay();
 
+    // Register keyboard events for player actions
     if (this.input && this.input.keyboard) {
-      this.input.keyboard.on("keydown-P", () => this.plantOnCurrentTile("potato"));
-      this.input.keyboard.on("keydown-C", () => this.plantOnCurrentTile("carrot"));
-      this.input.keyboard.on("keydown-B", () => this.plantOnCurrentTile("cabbage"));
-      this.input.keyboard.on("keydown-H", () => this.harvestFromCurrentTile());
-    } else {
-      console.error("Keyboard input plugin is not initialized.");
-    }
+        this.input.keyboard.on("keydown-P", () => this.performAction(() => this.plantOnCurrentTile("potato")));
+        this.input.keyboard.on("keydown-C", () => this.performAction(() => this.plantOnCurrentTile("carrot")));
+        this.input.keyboard.on("keydown-B", () => this.performAction(() => this.plantOnCurrentTile("cabbage")));
+        this.input.keyboard.on("keydown-H", () => this.performAction(() => this.harvestFromCurrentTile()));
+      } else {
+        console.error("Keyboard input plugin is not initialized.");
+      }
   }
 
-  private createAchievementsDisplay() {
-    this.achievementsText = this.add.text(10, 200, "Achievements:\n", {
+  private createActionsCounter() {
+    this.actionsText = this.add.text(10, 200, `Actions Remaining: ${this.actionsRemaining}`, {
       font: "16px Arial",
       color: "#ffffff",
     });
   }
 
-  private updateAchievements(type: "potato" | "carrot" | "cabbage") {
-    const thresholds = [
-      { count: 10, title: `${type} master` },
-      { count: 15, title: `${type} god` },
-      { count: 20, title: `${type} legend` },
-    ];
-
-    for (const threshold of thresholds) {
-      if (
-        this.inventory[type] >= threshold.count &&
-        !this.achievements.includes(threshold.title)
-      ) {
-        this.achievements.push(threshold.title);
-        this.showAchievement(threshold.title);
-      }
-    }
-
-    this.updateAchievementsDisplay();
+  private updateActionsCounter() {
+    this.actionsText.setText(`Actions Remaining: ${this.actionsRemaining}`);
   }
 
-  private showAchievement(title: string) {
-    const achievementText = this.add.text(
-      this.cameras.main.width / 2,
-      this.cameras.main.height / 2,
-      `Achievement Unlocked!\n${title}`,
+  private performAction(action: () => void) {
+    if (this.actionsRemaining > 0) {
+      action();
+      this.actionsRemaining--;
+      this.updateActionsCounter();
+
+      if (this.actionsRemaining === 0) {
+        console.log("No more actions left for today!");
+      }
+    } else {
+      console.error("You have no actions remaining for today!");
+    }
+  }
+
+  // Display control instructions on the right side of the screen
+  private createControlsDisplay() {
+    const text = `
+Controls:
+P - Plant Potato
+C - Plant Carrot
+B - Plant Cabbage
+H - Harvest Plant
+Arrow Keys - Move Player
+`;
+    this.controlsText = this.add.text(
+      this.cameras.main.width - 140,
+      50,
+      text,
       {
-        font: "20px Arial",
+        font: "16px Arial",
         color: "#ffffff",
-        backgroundColor: "#000000",
-        padding: { left: 10, right: 10, top: 5, bottom: 5 },
+        align: "left",
       }
     );
-    achievementText.setOrigin(0.5, 0.5);
-
-    this.time.delayedCall(2000, () => {
-      achievementText.destroy();
-    });
+    this.controlsText.setOrigin(0, 0);
   }
 
-  private updateAchievementsDisplay() {
-    this.achievementsText.setText(
-      `Achievements:\n${this.achievements.join("\n")}`
-    );
-  }
-
-  private createGrid() {
-    const offsetX = (this.cameras.main.width - GRID_SIZE * TILE_SIZE) / 2;
-    const offsetY = (this.cameras.main.height - GRID_SIZE * TILE_SIZE) / 2;
-
-    for (let row = 0; row < GRID_SIZE; row++) {
-      const gridRow: TileData[] = [];
-      for (let col = 0; col < GRID_SIZE; col++) {
-        const x = offsetX + col * TILE_SIZE + TILE_SIZE / 2;
-        const y = offsetY + row * TILE_SIZE + TILE_SIZE / 2;
-
-        const rectangle = this.add.rectangle(x, y, TILE_SIZE, TILE_SIZE, 0x228b22);
-        rectangle.setStrokeStyle(1, 0x000000);
-
-        const sunlight = Phaser.Math.Between(0, 100);
-        const water = Phaser.Math.Between(0, 100);
-
-        const textX = x - TILE_SIZE / 2 + 5;
-        const textY = y - TILE_SIZE / 2 + 5;
-        const text = this.add.text(textX, textY, `☀️ ${sunlight}\n💧 ${water}`, {
-          font: "14px Arial",
-          color: "#ffffff",
-          align: "left",
-        });
-        text.setOrigin(0, 0);
-
-        gridRow.push({ rectangle, sunlight, water, text });
-      }
-      this.grid.push(gridRow);
-    }
-  }
-
+  // Create the player and place them at the center of the grid
   private createPlayer() {
     const startX = this.cameras.main.width / 2;
     const startY = this.cameras.main.height / 2;
     this.player = new Player(this, startX, startY);
   }
 
+  // Create a button to advance to the next day
   private createNextDayButton() {
     const button = this.add.text(150, 50, "Next Day", {
       font: "20px Arial",
@@ -150,11 +122,14 @@ export default class GameScene extends Phaser.Scene {
     button.on("pointerdown", () => {
       this.dayCount++;
       this.dayText.setText(`Day: ${this.dayCount}`);
-      this.updateGridProperties();
+      this.actionsRemaining = 10;
+      this.updateActionsCounter();
+      this.tileManager.updateGridProperties(GRID_SIZE, TILE_SIZE);
       this.growPlants();
     });
   }
 
+  // Display the current day
   private createDayCounter() {
     this.dayText = this.add.text(10, 50, `Day: ${this.dayCount}`, {
       font: "20px Arial",
@@ -162,6 +137,7 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
+  // Display the player's inventory
   private createInventoryDisplay() {
     this.inventoryText = this.add.text(10, 100, this.getInventoryString(), {
       font: "16px Arial",
@@ -169,25 +145,17 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
+  // Generate the inventory display string
   private getInventoryString(): string {
     return `Inventory:\n🥔 Potato: ${this.inventory.potato}\n🥕 Carrot: ${this.inventory.carrot}\n🥬 Cabbage: ${this.inventory.cabbage}`;
   }
 
+  // Update the inventory display
   private updateInventoryDisplay() {
     this.inventoryText.setText(this.getInventoryString());
   }
 
-  private updateGridProperties() {
-    for (let row = 0; row < GRID_SIZE; row++) {
-      for (let col = 0; col < GRID_SIZE; col++) {
-        const tile = this.grid[row][col];
-        tile.sunlight = Phaser.Math.Between(0, 100);
-        tile.water = Math.min(tile.water + Phaser.Math.Between(0, 30), 100);
-        tile.text.setText(`☀️ ${tile.sunlight}\n💧 ${tile.water}`);
-      }
-    }
-  }
-
+  // Plant a specified type of plant on the active tile
   private plantOnCurrentTile(type: "potato" | "carrot" | "cabbage") {
     if (!this.activeTile) return;
 
@@ -222,15 +190,14 @@ export default class GameScene extends Phaser.Scene {
     tile.text.setText(`☀️ ${tile.sunlight}\n💧 ${tile.water}\n🌱 ${type} L1`);
   }
 
+  // Grow plants based on conditions and update their levels
   private growPlants() {
     for (let row = 0; row < GRID_SIZE; row++) {
       for (let col = 0; col < GRID_SIZE; col++) {
         const tile = this.grid[row][col];
-  
-        // 如果格子中没有植物，跳过处理
+
         if (!tile.plant) continue;
-  
-        // 检查植物是否可以升级
+
         const growConditions: Record<
           "potato" | "carrot" | "cabbage",
           Record<number, { sunlight: number; water: number }>
@@ -239,17 +206,15 @@ export default class GameScene extends Phaser.Scene {
           carrot: { 2: { sunlight: 60, water: 40 }, 3: { sunlight: 45, water: 20 } },
           cabbage: { 2: { sunlight: 55, water: 30 }, 3: { sunlight: 65, water: 20 } },
         };
-  
+
         const nextLevel = (tile.plant.level + 1) as 1 | 2 | 3;
         const conditions = growConditions[tile.plant.type]?.[nextLevel];
-  
-        // 如果植物可以升级，则进行升级
+
         if (conditions && tile.sunlight >= conditions.sunlight && tile.water >= conditions.water) {
           tile.water -= conditions.water;
           tile.plant.level = nextLevel;
         }
-  
-        // 更新显示，无论植物是否升级，都需要显示植物信息
+
         const plantType = tile.plant.type;
         const plantLevel = tile.plant.level;
         tile.text.setText(
@@ -258,7 +223,8 @@ export default class GameScene extends Phaser.Scene {
       }
     }
   }
-  
+
+  // Harvest a plant from the active tile
   private harvestFromCurrentTile() {
     if (!this.activeTile || !this.activeTile.plant) {
       console.error("No plant to harvest!");
@@ -274,9 +240,10 @@ export default class GameScene extends Phaser.Scene {
     tile.text.setText(tile.text.text.replace(/\n🌱.*$/, ""));
     this.updateInventoryDisplay();
 
-    this.updateAchievements(plant.type);
+    this.achievementsManager.checkAndUpdate(plant.type, this.inventory[plant.type]);
   }
 
+  // Update loop
   update(time: number, delta: number) {
     this.player.update(delta);
 
@@ -291,6 +258,7 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  // Highlight the tile the player is currently standing on
   private highlightTile(row: number, col: number) {
     if (this.activeTile) {
       this.activeTile.rectangle.setFillStyle(0x228b22);
