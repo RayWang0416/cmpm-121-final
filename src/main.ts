@@ -1,6 +1,4 @@
 import Phaser from "phaser";
-import BootScene from "./scenes/BootScene";
-import PreloadScene from "./scenes/PreloadScene";
 import GameScene from "./scenes/GameScene";
 import { GRID_SIZE, TILE_SIZE } from "./utils/Constants";
 
@@ -10,7 +8,7 @@ const config: Phaser.Types.Core.GameConfig = {
     height: 1500,
     backgroundColor: "#8B4513",
     parent: "game-container",
-    scene: [BootScene, PreloadScene, GameScene],
+    scene: [GameScene],
     physics: {
       default: "arcade",
       arcade: {

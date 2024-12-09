@@ -1,9 +1,9 @@
 initial:
   dayCount: 1
   inventory:
-    potato: 1
-    carrot: 2
-    cabbage: 3
+    potato: 3
+    carrot: 1
+    cabbage: 2
   achievements: ["Starting Hero", "Green Thumb"]
 
 gridOverrides:
