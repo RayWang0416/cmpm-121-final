@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { GRID_SIZE, TILE_SIZE } from "../utils/Constants";
 import Player from "../objects/Player";
 import * as yaml from 'js-yaml';  
+import LocalizationManager from "./localizationManager";
 
 enum PlantType {
   None = 0,
