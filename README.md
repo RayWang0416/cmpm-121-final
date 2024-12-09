@@ -59,6 +59,8 @@ We Choose Typescript instead of Javascript because TS is a superset of JS.
           [Cell0:Sun,Water,Type,Level][Cell1:Sun,Water,Type,Level]...[CellN:Sun,Water,Type,Level]
 
         ![F1.a data structure diagram](./memory.png)
+        ![image](https://github.com/user-attachments/assets/55819f53-74f2-469f-8236-d715b21607a2)
+
   
         Thus, (row * GRID_SIZE + col)*4 gives the starting index for a cell. We chose AoS because it keeps all data for a single tile adjacent, making it straightforward to update and display each tile.
   
