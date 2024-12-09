@@ -72,6 +72,6 @@ We Choose Typescript instead of Javascript because TS is a superset of JS.
 -f1.d: We maintain two stacks: undoStack and redoStack. Before any major state change, we push the current state onto undoStack. Undo pops from undoStack and pushes onto redoStack, reverting to a previous state. Redo pops from redoStack and pushes to undoStack, moving forward again. These stacks are also saved and loaded, so after loading a game, the player can still undo/redo previous actions.
 
 ## Reflection
-We found that Phaser is enough for our needs, so there is no big changes. However, we somehow changed our roles. Hengyang Ye did the overall design of the game, and I Implement most of the code.
+For F0 We found that Phaser is enough for our needs, so there is no big changes. However, we somehow changed our roles. Hengyang did the overall design of the game, and Ray Implement most of the code.
 
 Implementing F1 made us consider how the player's interaction with the game’s timeline evolves. Previously, we only tracked current state, but now we manage historical states for undo/redo. We needed a more careful approach to serialization, ensuring undoStack and redoStack were saved and restored properly.
