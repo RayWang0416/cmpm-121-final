@@ -18,10 +18,11 @@ gridOverrides:
     col: 3
     sunlight: 60
     water: 30
-    plantType: carrot
+    plantType: none
     plantLevel: 2
 
   - row: 1
     col: 1
     sunlight: 50
     water: 50
+    plantType: none
