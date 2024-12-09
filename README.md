@@ -48,19 +48,19 @@ We Choose Typescript instead of Javascript because TS is a superset of JS.
 - f0.g: The player will unlock achievements if he get a decent number of crops.
   
 - f1.a: The game's grid state is stored in a single contiguous byte array.
-        We implemented this using an Array of Structures (AoS) format. Each cell is represented by 4 bytes:
+  We implemented this using an Array of Structures (AoS) format. Each cell is represented by 4 bytes:
 
-          Byte 0: Sunlight (0–100)
-          Byte 1: Water (0–100)
-          Byte 2: Plant Type (0 = none, 1 = potato, 2 = carrot, 3 = cabbage)
-          Byte 3: Plant Level (0–3, 0 means no plant)
+  Byte 0: Sunlight (0–100)
+  Byte 1: Water (0–100)
+  Byte 2: Plant Type (0 = none, 1 = potato, 2 = carrot, 3 = cabbage)
+  Byte 3: Plant Level (0–3, 0 means no plant)
   
-        This yields a layout like this:
-          [Cell0:Sun,Water,Type,Level][Cell1:Sun,Water,Type,Level]...[CellN:Sun,Water,Type,Level]
+  This yields a layout like this:
+    [Cell0:Sun,Water,Type,Level][Cell1:Sun,Water,Type,Level]...[CellN:Sun,Water,Type,Level]
 
   ![F1.a data structure diagram](./memory.png)
 
-        Thus, (row * GRID_SIZE + col)*4 gives the starting index for a cell. We chose AoS because it keeps all data for a single tile adjacent, making it straightforward to update and display each tile.
+  Thus, (row * GRID_SIZE + col)*4 gives the starting index for a cell. We chose AoS because it keeps all data for a single tile adjacent, making it straightforward to update and display each tile.
   
 - f1.b: We serialize dayCount, inventory, achievements, actionsRemaining, gridData, and now also undoStack/redoStack into JSON and store them in localStorage. The player can choose a slot to save and load from.
 
