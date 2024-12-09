@@ -153,33 +153,50 @@ export default class GameScene extends Phaser.Scene {
     }
 
     if (this.input && this.input.keyboard) {
+      // 种植和收割是有效动作，成功返回true
       this.input.keyboard.on("keydown-P", () => this.performAction(() => this.plantOnCurrentTile("potato")));
       this.input.keyboard.on("keydown-C", () => this.performAction(() => this.plantOnCurrentTile("carrot")));
       this.input.keyboard.on("keydown-B", () => this.performAction(() => this.plantOnCurrentTile("cabbage")));
       this.input.keyboard.on("keydown-H", () => this.performAction(() => this.harvestFromCurrentTile()));
 
+      // Save, Load不算为有效动作，但我们仍然使用performAction以保持undo/redo逻辑
+      // 如果不想扣减actionsRemaining，就让回调返回false
       this.input.keyboard.on("keydown-S", () => {
-        const slotStr = window.prompt("Enter save slot number (e.g. 1, 2, 3):");
-        if (slotStr) {
-          const slot = parseInt(slotStr, 10);
-          if (!isNaN(slot)) {
-            this.saveGame(slot);
+        this.actionsRemaining++;
+        this.performAction(() => {
+          const slotStr = window.prompt("Enter save slot number (e.g. 1, 2, 3):");
+          if (slotStr) {
+            const slot = parseInt(slotStr, 10);
+            if (!isNaN(slot)) {
+              this.saveGame(slot);
+            }
           }
-        }
+          return true; // 有效动作，减少actionsRemaining
+        });
       });
 
       this.input.keyboard.on("keydown-L", () => {
-        const slotStr = window.prompt("Enter load slot number (e.g. 1, 2, 3):");
-        if (slotStr) {
-          const slot = parseInt(slotStr, 10);
-          if (!isNaN(slot)) {
-            this.loadGame(slot);
+        this.actionsRemaining++;
+        this.performAction(() => {
+          const slotStr = window.prompt("Enter load slot number (e.g. 1, 2, 3):");
+          if (slotStr) {
+            const slot = parseInt(slotStr, 10);
+            if (!isNaN(slot)) {
+              this.loadGame(slot);
+            }
           }
-        }
+          return true; // 有效动作
+        });
       });
 
-      this.input.keyboard.on("keydown-U", () => this.undo());
-      this.input.keyboard.on("keydown-R", () => this.redo());
+      // Undo, Redo同样不扣减actionsRemaining
+      this.input.keyboard.on("keydown-U", () => {
+        this.undo();
+      });
+
+      this.input.keyboard.on("keydown-R", () => {
+        this.redo();
+      });
     } else {
       console.error("Keyboard input plugin is not initialized.");
     }
@@ -314,12 +331,37 @@ export default class GameScene extends Phaser.Scene {
     this.actionsText.setText(`Actions Remaining: ${this.actionsRemaining}`);
   }
 
-  private performAction(action: () => void) {
+  // performAction现在需要返回boolean的回调
+  // 对于非有效动作，回调返回false，这样不会减少actionsRemaining
+  // 对于有效动作（种植、收割），回调返回true才减少actionsRemaining
+  private performAction(action: () => boolean, countAsAction: boolean = true) {
+    // 如果是消耗行动的操作，但actionsRemaining已经没有了，直接返回
+    if (countAsAction && this.actionsRemaining <= 0) {
+      console.error("No actions remaining!");
+      return;
+    }
+  
     this.pushCurrentStateToUndo();
-    action();
+    const actionSucceeded = action();
     this.redoStack = [];
+  
+    if (actionSucceeded) {
+      // 动作成功且是有效动作则消耗次数
+      if (countAsAction) {
+        this.actionsRemaining = Math.max(0, this.actionsRemaining - 1);
+        this.updateActionsCounter();
+      }
+    } else {
+      // 动作失败才回滚
+      const prevState = this.undoStack.pop();
+      if (prevState) {
+        this.loadFromGameState(prevState);
+      }
+    }
+  
     this.autoSaveGame();
   }
+  
 
   private pushCurrentStateToUndo() {
     this.undoStack.push(this.copyCurrentState());
@@ -362,7 +404,7 @@ export default class GameScene extends Phaser.Scene {
       console.log("No more undo available!");
     }
   }
-
+  
   private redo() {
     if (this.redoStack.length > 0) {
       this.undoStack.push(this.copyCurrentState());
@@ -372,23 +414,23 @@ export default class GameScene extends Phaser.Scene {
     } else {
       console.log("No more redo available!");
     }
-  }
+  }  
 
   private createControlsDisplay() {
     const text = `
 Controls:
-P - Plant Potato
-C - Plant Carrot
-B - Plant Cabbage
-H - Harvest Plant
+P - Plant Potato 
+C - Plant Carrot 
+B - Plant Cabbage 
+H - Harvest Plant 
 Arrow Keys - Move Player
-S - Save Game
-L - Load Game
+S - Save Game 
+L - Load Game 
 U - Undo
-R - Redo
+R - Redo 
 `;
     this.controlsText = this.add.text(
-      this.cameras.main.width - 160,
+      this.cameras.main.width - 200,
       50,
       text,
       {
@@ -501,6 +543,7 @@ R - Redo
 
     button.setInteractive();
     button.on("pointerdown", () => {
+      // Next Day不是消耗行动次数的有效动作，所以countAsAction=false
       this.performAction(() => {
         this.dayCount++;
         this.actionsRemaining = 10;
@@ -508,7 +551,8 @@ R - Redo
         this.dayText.setText(`Day: ${this.dayCount}`);
         this.growPlants();
         this.updateGridProperties();
-      });
+        return true; 
+      }, false);
     });
   }
 
@@ -591,53 +635,55 @@ R - Redo
     return false;
   }
 
-  private plantOnCurrentTile(type: "potato" | "carrot" | "cabbage") {
-    if (!this.activeTile) return;
-
+  private plantOnCurrentTile(type: "potato" | "carrot" | "cabbage"): boolean {
+    if (!this.activeTile) return false;
+  
     const { row, col } = this.getActiveTilePosition();
     const water = this.getWater(row, col);
-
+  
     if (this.getPlantType(row, col) !== PlantType.None) {
       console.error("This tile already has a plant!");
-      return;
+      return false;
     }
-
+  
     const conditions: Record<"potato"|"carrot"|"cabbage", boolean> = {
       potato: water >= 20,
       carrot: water >= 20,
       cabbage: water >= 70,
     };
-
+  
     if (!conditions[type]) {
       console.error("This tile does not meet the planting conditions!");
-      return;
+      return false;
     }
-
+  
     if (type === "carrot") {
       const adjacentHasPotatoOrCabbage = this.canPlantCarrotHere(row, col);
       if (!adjacentHasPotatoOrCabbage) {
         console.error("Cannot plant carrot here! Need an adjacent tile with Potato or Cabbage.");
-        return;
+        return false;
       }
     }
-
+  
     if (this.inventory[type] <= 0) {
       console.error(`No ${type} left in inventory!`);
-      return;
+      return false;
     }
-
+  
     const waterCost = { potato: 20, carrot: 20, cabbage: 70 };
     this.setWater(row, col, water - waterCost[type]);
     this.inventory[type]--;
     this.updateInventoryDisplay();
-
+  
     const plantEnum = (type === "potato") ? PlantType.Potato : 
                       (type === "carrot") ? PlantType.Carrot : PlantType.Cabbage;
-
+  
     this.setPlantType(row, col, plantEnum);
     this.setPlantLevel(row, col, 1);
     this.updateAllTilesDisplay();
-  }
+  
+    return true; // 成功种植，返回true
+  }  
 
   private growPlants() {
     for (let row = 0; row < GRID_SIZE; row++) {
@@ -664,39 +710,41 @@ R - Redo
     this.updateAllTilesDisplay();
   }
 
-  private harvestFromCurrentTile() {
+  private harvestFromCurrentTile(): boolean {
     if (!this.activeTile) {
       console.error("No active tile!");
-      return;
+      return false;
     }
-
+  
     const { row, col } = this.getActiveTilePosition();
     const plantType = this.getPlantType(row, col);
     const level = this.getPlantLevel(row, col);
     if (plantType === PlantType.None) {
       console.error("No plant to harvest!");
-      return;
+      return false;
     }
-
+  
     if (level < 1 || level > 3) {
       console.error("Invalid plant level.");
-      return;
+      return false;
     }
-
+  
     const harvestMap: Record<PlantLevel, number> = {1:1,2:2,3:4};
     const harvestAmount = harvestMap[level as PlantLevel];
-
+  
     let typeKey: "potato"|"carrot"|"cabbage" = "potato";
     if (plantType === PlantType.Carrot) typeKey = "carrot";
     if (plantType === PlantType.Cabbage) typeKey = "cabbage";
-
+  
     this.inventory[typeKey] += harvestAmount;
     this.setPlantType(row, col, PlantType.None);
     this.setPlantLevel(row, col, 0);
     this.updateInventoryDisplay();
     this.updateAchievements(typeKey);
     this.updateAllTilesDisplay();
-  }
+  
+    return true; // 成功收割，返回true
+  }  
 
   private getActiveTilePosition(): {row:number, col:number} {
     const offsetX = (this.cameras.main.width - GRID_SIZE * TILE_SIZE) / 2;

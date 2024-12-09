@@ -12,9 +12,14 @@ enum PlantType {
 
 type PlantLevel = 1 | 2 | 3;
 
+interface NeighborCondition {
+  requiredNeighbors: Partial<Record<PlantType, number>>;
+}
+
 interface GrowthCondition {
   sunlight: number;
   water: number;
+  neighbors?: NeighborCondition;
 }
 
 // 使用Partial允许阶段配置为空
@@ -68,6 +73,13 @@ interface PlantLevelConfig {
   level: number;
   sunlight: number;
   water: number;
+  neighbors?: {
+    requiredNeighbors: {
+      potato?: number;
+      carrot?: number;
+      cabbage?: number;
+    };
+  };
 }
 
 interface PlantsYAML {
@@ -83,7 +95,21 @@ class PlantBuilder {
   private conditions: GrowthMap = {};
 
   growthStage(level: PlantLevel, sunlight: number, water: number): PlantBuilder {
-    this.conditions[level] = { sunlight, water };
+    if (!this.conditions[level]) {
+      this.conditions[level] = { sunlight, water };
+    } else {
+      this.conditions[level]!.sunlight = sunlight;
+      this.conditions[level]!.water = water;
+    }
+    return this;
+  }
+
+  // 新增方法用于设置邻居条件
+  neighborsCondition(level: PlantLevel, requiredNeighbors: Partial<Record<PlantType, number>>): PlantBuilder {
+    if (!this.conditions[level]) {
+      this.conditions[level] = { sunlight: 0, water: 0 };
+    }
+    this.conditions[level]!.neighbors = { requiredNeighbors };
     return this;
   }
 
@@ -104,7 +130,6 @@ function definePlant(type: PlantType, definition: (b: PlantBuilder) => void) {
   definition(builder);
   plantDefinitions[type] = builder.build();
 }
-
 
 export default class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -153,14 +178,14 @@ export default class GameScene extends Phaser.Scene {
     }
 
     if (this.input && this.input.keyboard) {
-      // 种植和收割是有效动作，成功返回true
+      // Planting and harvesting are valid actions, return true on success
       this.input.keyboard.on("keydown-P", () => this.performAction(() => this.plantOnCurrentTile("potato")));
       this.input.keyboard.on("keydown-C", () => this.performAction(() => this.plantOnCurrentTile("carrot")));
       this.input.keyboard.on("keydown-B", () => this.performAction(() => this.plantOnCurrentTile("cabbage")));
       this.input.keyboard.on("keydown-H", () => this.performAction(() => this.harvestFromCurrentTile()));
 
-      // Save, Load不算为有效动作，但我们仍然使用performAction以保持undo/redo逻辑
-      // 如果不想扣减actionsRemaining，就让回调返回false
+      // Save and Load are not counted as valid actions, but we still use performAction to maintain undo/redo logic
+      // If you don't want to decrement actionsRemaining, let the callback return false
       this.input.keyboard.on("keydown-S", () => {
         this.actionsRemaining++;
         this.performAction(() => {
@@ -171,7 +196,7 @@ export default class GameScene extends Phaser.Scene {
               this.saveGame(slot);
             }
           }
-          return true; // 有效动作，减少actionsRemaining
+          return true; // Valid action, decrement actionsRemaining
         });
       });
 
@@ -185,11 +210,11 @@ export default class GameScene extends Phaser.Scene {
               this.loadGame(slot);
             }
           }
-          return true; // 有效动作
+          return true; // Valid action
         });
       });
 
-      // Undo, Redo同样不扣减actionsRemaining
+      // Undo and Redo do not decrement actionsRemaining
       this.input.keyboard.on("keydown-U", () => {
         this.undo();
       });
@@ -227,27 +252,37 @@ export default class GameScene extends Phaser.Scene {
       const text = await response.text();
       const data = yaml.load(text) as PlantsYAML;
 
-      // 根据yaml数据定义植物
-      if (data.plants.potato) {
-        definePlant(PlantType.Potato, b => {
-          for (const cfg of data.plants.potato!) {
-            b.growthStage(cfg.level as PlantLevel, cfg.sunlight, cfg.water);
-          }
-        });
-      }
-      if (data.plants.carrot) {
-        definePlant(PlantType.Carrot, b => {
-          for (const cfg of data.plants.carrot!) {
-            b.growthStage(cfg.level as PlantLevel, cfg.sunlight, cfg.water);
-          }
-        });
-      }
-      if (data.plants.cabbage) {
-        definePlant(PlantType.Cabbage, b => {
-          for (const cfg of data.plants.cabbage!) {
-            b.growthStage(cfg.level as PlantLevel, cfg.sunlight, cfg.water);
-          }
-        });
+      // Define plants based on YAML data
+      const plantTypes: PlantType[] = [PlantType.Potato, PlantType.Carrot, PlantType.Cabbage];
+      for (const type of plantTypes) {
+        const typeName = PlantType[type].toLowerCase();
+        const plantConfigs = data.plants[typeName as keyof PlantsYAML['plants']] as PlantLevelConfig[] | undefined;
+        if (plantConfigs) {
+          definePlant(type, b => {
+            for (const cfg of plantConfigs) {
+              b.growthStage(cfg.level as PlantLevel, cfg.sunlight, cfg.water);
+              if (cfg.neighbors && cfg.neighbors.requiredNeighbors) {
+                const requiredNeighbors: Partial<Record<PlantType, number>> = {};
+                for (const [plantName, count] of Object.entries(cfg.neighbors.requiredNeighbors)) {
+                  switch (plantName) {
+                    case "potato":
+                      requiredNeighbors[PlantType.Potato] = count;
+                      break;
+                    case "carrot":
+                      requiredNeighbors[PlantType.Carrot] = count;
+                      break;
+                    case "cabbage":
+                      requiredNeighbors[PlantType.Cabbage] = count;
+                      break;
+                    default:
+                      console.warn(`Unknown plant type in neighbors: ${plantName}`);
+                  }
+                }
+                b.neighborsCondition(cfg.level as PlantLevel, requiredNeighbors);
+              }
+            }
+          });
+        }
       }
 
     } catch (error) {
@@ -259,10 +294,10 @@ export default class GameScene extends Phaser.Scene {
     this.undoStack = [];
     this.redoStack = [];
 
-    // 先加载植物定义
+    // Load plant definitions first
     await this.loadPlantDefinitionsFromYAML();
 
-    // 再加载场景数据
+    // Then load scene data
     const yamlData = await this.loadSceneConfigFromYAML();
 
     if (yamlData && yamlData.initial) {
@@ -331,11 +366,11 @@ export default class GameScene extends Phaser.Scene {
     this.actionsText.setText(`Actions Remaining: ${this.actionsRemaining}`);
   }
 
-  // performAction现在需要返回boolean的回调
-  // 对于非有效动作，回调返回false，这样不会减少actionsRemaining
-  // 对于有效动作（种植、收割），回调返回true才减少actionsRemaining
+  // performAction now requires a callback that returns boolean
+  // For non-valid actions, the callback returns false, so actionsRemaining is not decremented
+  // For valid actions (planting, harvesting), the callback returns true to decrement actionsRemaining
   private performAction(action: () => boolean, countAsAction: boolean = true) {
-    // 如果是消耗行动的操作，但actionsRemaining已经没有了，直接返回
+    // If it's an action that consumes an action and no actions remain, return immediately
     if (countAsAction && this.actionsRemaining <= 0) {
       console.error("No actions remaining!");
       return;
@@ -346,13 +381,13 @@ export default class GameScene extends Phaser.Scene {
     this.redoStack = [];
   
     if (actionSucceeded) {
-      // 动作成功且是有效动作则消耗次数
+      // If action succeeded and counts as an action, decrement actionsRemaining
       if (countAsAction) {
         this.actionsRemaining = Math.max(0, this.actionsRemaining - 1);
         this.updateActionsCounter();
       }
     } else {
-      // 动作失败才回滚
+      // If action failed, rollback
       const prevState = this.undoStack.pop();
       if (prevState) {
         this.loadFromGameState(prevState);
@@ -428,7 +463,7 @@ S - Save Game
 L - Load Game 
 U - Undo
 R - Redo 
-`;
+    `;
     this.controlsText = this.add.text(
       this.cameras.main.width - 200,
       50,
@@ -543,7 +578,7 @@ R - Redo
 
     button.setInteractive();
     button.on("pointerdown", () => {
-      // Next Day不是消耗行动次数的有效动作，所以countAsAction=false
+      // Next Day is not counted as a valid action, so countAsAction=false
       this.performAction(() => {
         this.dayCount++;
         this.actionsRemaining = 10;
@@ -599,9 +634,18 @@ R - Redo
 
     let str = `☀️ ${sunlight}\n💧 ${water}`;
     if (plantType !== PlantType.None) {
-      const typeStr = (plantType === PlantType.Potato) ? "potato" :
-                      (plantType === PlantType.Carrot) ? "carrot" : "cabbage";
+      const typeStr = (plantType === PlantType.Potato) ? "Potato" :
+                      (plantType === PlantType.Carrot) ? "Carrot" : "Cabbage";
       str += `\n🌱 ${typeStr} L${plantLevel}`;
+
+      // Display neighbor conditions (only needed when planting)
+      const growthCondition = plantDefinitions[plantType][plantLevel as PlantLevel];
+      if (growthCondition && growthCondition.neighbors && growthCondition.neighbors.requiredNeighbors) {
+        const neighborConditions = Object.entries(growthCondition.neighbors.requiredNeighbors)
+          .map(([type, count]) => `${PlantType[Number(type)]}: ${count}`)
+          .join(", ");
+        str += `\n🔗 ${neighborConditions}`;
+      }
     }
     return str;
   }
@@ -614,75 +658,96 @@ R - Redo
     }
   }
 
-  private canPlantCarrotHere(row: number, col: number): boolean {
-    const directions = [
-      {dr: -1, dc: 0},
-      {dr: 1, dc: 0},
-      {dr: 0, dc: -1},
-      {dr: 0, dc: 1}
-    ];
-
-    for (const dir of directions) {
-      const newRow = row + dir.dr;
-      const newCol = col + dir.dc;
-      if (newRow >= 0 && newRow < GRID_SIZE && newCol >= 0 && newCol < GRID_SIZE) {
-        const neighborPlantType = this.getPlantType(newRow, newCol);
-        if (neighborPlantType === PlantType.Potato || neighborPlantType === PlantType.Cabbage) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
   private plantOnCurrentTile(type: "potato" | "carrot" | "cabbage"): boolean {
     if (!this.activeTile) return false;
   
     const { row, col } = this.getActiveTilePosition();
     const water = this.getWater(row, col);
-  
+
     if (this.getPlantType(row, col) !== PlantType.None) {
       console.error("This tile already has a plant!");
       return false;
     }
-  
+
     const conditions: Record<"potato"|"carrot"|"cabbage", boolean> = {
       potato: water >= 20,
       carrot: water >= 20,
       cabbage: water >= 70,
     };
-  
+
     if (!conditions[type]) {
       console.error("This tile does not meet the planting conditions!");
       return false;
     }
-  
-    if (type === "carrot") {
-      const adjacentHasPotatoOrCabbage = this.canPlantCarrotHere(row, col);
-      if (!adjacentHasPotatoOrCabbage) {
-        console.error("Cannot plant carrot here! Need an adjacent tile with Potato or Cabbage.");
+
+    // Check neighbor conditions
+    const plantTypeEnum = (type === "potato") ? PlantType.Potato : 
+                          (type === "carrot") ? PlantType.Carrot : PlantType.Cabbage;
+    
+    const plantGrowthMap = plantDefinitions[plantTypeEnum];
+    const currentLevel = 1 as PlantLevel; // Assume initial level is 1
+    const growthCondition = plantGrowthMap[currentLevel];
+    
+    if (growthCondition && growthCondition.neighbors && growthCondition.neighbors.requiredNeighbors) {
+      const { requiredNeighbors } = growthCondition.neighbors;
+      let canPlant = true;
+
+      for (const [neighborType, requiredCount] of Object.entries(requiredNeighbors)) {
+        const typeEnum = Number(neighborType) as PlantType;
+        let count = 0;
+        const directions = [
+          {dr: -1, dc: 0},
+          {dr: 1, dc: 0},
+          {dr: 0, dc: -1},
+          {dr: 0, dc: 1},
+          {dr: -1, dc: -1},
+          {dr: -1, dc: 1},
+          {dr: 1, dc: -1},
+          {dr: 1, dc: 1},
+        ];
+
+        for (const dir of directions) {
+          const newRow = row + dir.dr;
+          const newCol = col + dir.dc;
+          if (newRow >= 0 && newRow < GRID_SIZE && newCol >= 0 && newCol < GRID_SIZE) {
+            const neighborType = this.getPlantType(newRow, newCol);
+            if (neighborType === typeEnum) {
+              count++;
+              if (count >= requiredCount) break;
+            }
+          }
+        }
+
+        if (count < requiredCount) {
+          canPlant = false;
+          console.error(`Cannot plant ${type} here! Requires at least ${requiredCount} neighboring ${PlantType[typeEnum]}(s).`);
+          break;
+        }
+      }
+
+      if (!canPlant) {
         return false;
       }
     }
-  
+
     if (this.inventory[type] <= 0) {
       console.error(`No ${type} left in inventory!`);
       return false;
     }
-  
+
     const waterCost = { potato: 20, carrot: 20, cabbage: 70 };
     this.setWater(row, col, water - waterCost[type]);
     this.inventory[type]--;
     this.updateInventoryDisplay();
-  
+
     const plantEnum = (type === "potato") ? PlantType.Potato : 
                       (type === "carrot") ? PlantType.Carrot : PlantType.Cabbage;
-  
+
     this.setPlantType(row, col, plantEnum);
     this.setPlantLevel(row, col, 1);
     this.updateAllTilesDisplay();
-  
-    return true; // 成功种植，返回true
+
+    return true; // Successfully planted, return true
   }  
 
   private growPlants() {
@@ -697,6 +762,49 @@ R - Redo
         const nextLevel = (currentLevel + 1) as PlantLevel;
         const cond = plantDefinitions[plantType][nextLevel];
         if (!cond) continue;
+
+        // Check neighbor conditions
+        if (cond.neighbors && cond.neighbors.requiredNeighbors) {
+          const { requiredNeighbors } = cond.neighbors;
+          let canGrow = true;
+
+          for (const [neighborType, requiredCount] of Object.entries(requiredNeighbors)) {
+            const typeEnum = Number(neighborType) as PlantType;
+            let count = 0;
+            const directions = [
+              {dr: -1, dc: 0},
+              {dr: 1, dc: 0},
+              {dr: 0, dc: -1},
+              {dr: 0, dc: 1},
+              {dr: -1, dc: -1},
+              {dr: -1, dc: 1},
+              {dr: 1, dc: -1},
+              {dr: 1, dc: 1},
+            ];
+
+            for (const dir of directions) {
+              const newRow = row + dir.dr;
+              const newCol = col + dir.dc;
+              if (newRow >= 0 && newRow < GRID_SIZE && newCol >= 0 && newCol < GRID_SIZE) {
+                const neighborType = this.getPlantType(newRow, newCol);
+                if (neighborType === typeEnum) {
+                  count++;
+                  if (count >= requiredCount) break;
+                }
+              }
+            }
+
+            if (count < requiredCount) {
+              canGrow = false;
+              console.log(`Plant at (${row}, ${col}) cannot grow to level ${nextLevel} due to insufficient ${PlantType[typeEnum]} neighbors.`);
+              break;
+            }
+          }
+
+          if (!canGrow) {
+            continue;
+          }
+        }
 
         const sunlight = this.getSunlight(row, col);
         const water = this.getWater(row, col);
@@ -743,7 +851,7 @@ R - Redo
     this.updateAchievements(typeKey);
     this.updateAllTilesDisplay();
   
-    return true; // 成功收割，返回true
+    return true; // Successfully harvested, return true
   }  
 
   private getActiveTilePosition(): {row:number, col:number} {
