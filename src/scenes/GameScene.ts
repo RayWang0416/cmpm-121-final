@@ -89,10 +89,8 @@ export default class GameScene extends Phaser.Scene {
   create() {
     this.gridData = new Uint8Array(GRID_SIZE * GRID_SIZE * this.FIELDS_PER_CELL);
 
-    // 初始化场景 (F1.c的方式)：
     this.initNewGame();
 
-    // 尝试从自动存档加载 (F1.c)
     const autoSaveData = localStorage.getItem("autoSave");
     if (autoSaveData) {
       const loadFromAutoSave = window.confirm("An autosave was found. Do you want to continue where you left off?");
@@ -101,14 +99,12 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
-    // 注册键盘事件
     if (this.input && this.input.keyboard) {
       this.input.keyboard.on("keydown-P", () => this.performAction(() => this.plantOnCurrentTile("potato")));
       this.input.keyboard.on("keydown-C", () => this.performAction(() => this.plantOnCurrentTile("carrot")));
       this.input.keyboard.on("keydown-B", () => this.performAction(() => this.plantOnCurrentTile("cabbage")));
       this.input.keyboard.on("keydown-H", () => this.performAction(() => this.harvestFromCurrentTile()));
 
-      // 手动保存
       this.input.keyboard.on("keydown-S", () => {
         const slotStr = window.prompt("Enter save slot number (e.g. 1, 2, 3):");
         if (slotStr) {
@@ -119,7 +115,6 @@ export default class GameScene extends Phaser.Scene {
         }
       });
 
-      // 手动加载
       this.input.keyboard.on("keydown-L", () => {
         const slotStr = window.prompt("Enter load slot number (e.g. 1, 2, 3):");
         if (slotStr) {
@@ -130,7 +125,6 @@ export default class GameScene extends Phaser.Scene {
         }
       });
 
-      // [F1.d] 撤销和重做
       this.input.keyboard.on("keydown-U", () => this.undo());
       this.input.keyboard.on("keydown-R", () => this.redo());
     } else {
@@ -165,17 +159,12 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private performAction(action: () => void) {
-    // 在执行行动前将当前状态压入undoStack
     this.pushCurrentStateToUndo();
-    // 执行行动
     action();
-    // 清空redoStack
     this.redoStack = [];
-    // 自动存档 (F1.c)
     this.autoSaveGame();
   }
 
-  // 将当前状态复制并压入undoStack
   private pushCurrentStateToUndo() {
     this.undoStack.push(this.copyCurrentState());
   }
@@ -200,7 +189,6 @@ export default class GameScene extends Phaser.Scene {
     this.player.setPosition(state.playerX, state.playerY);
     this.actionsRemaining = state.actionsRemaining;
 
-    // 更新UI显示
     this.dayText.setText(`Day: ${this.dayCount}`);
     this.updateInventoryDisplay();
     this.updateAchievementsDisplay();
@@ -210,9 +198,7 @@ export default class GameScene extends Phaser.Scene {
 
   private undo() {
     if (this.undoStack.length > 0) {
-      // 当前状态压入redoStack
       this.redoStack.push(this.copyCurrentState());
-      // 从undoStack弹出状态并恢复
       const prevState = this.undoStack.pop()!;
       this.loadFromGameState(prevState);
       this.autoSaveGame();
@@ -223,9 +209,7 @@ export default class GameScene extends Phaser.Scene {
 
   private redo() {
     if (this.redoStack.length > 0) {
-      // 当前状态压入undoStack
       this.undoStack.push(this.copyCurrentState());
-      // 从redoStack弹出状态并恢复
       const nextState = this.redoStack.pop()!;
       this.loadFromGameState(nextState);
       this.autoSaveGame();
@@ -298,7 +282,6 @@ R - Redo
     );
     achievementText.setOrigin(0.5, 0.5);
 
-    // 2秒后移除
     this.time.delayedCall(2000, () => {
       achievementText.destroy();
     });
