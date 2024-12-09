@@ -116,7 +116,6 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
-    // 注册键盘事件
     if (this.input && this.input.keyboard) {
       this.input.keyboard.on("keydown-P", () => this.performAction(() => this.plantOnCurrentTile("potato")));
       this.input.keyboard.on("keydown-C", () => this.performAction(() => this.plantOnCurrentTile("carrot")));

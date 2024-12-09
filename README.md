@@ -38,7 +38,7 @@ We Choose Typescript instead of Javascript because TS is a superset of JS.
 
 ## How we satisfied the software requirements
 
-### F0
+### F0+F1
 - f0.a: The player can control a yellow square as the character, using arrow keys to move over a 5*5 2D grid.
 - f0.b: The player can clicked the 'next day' button to start the next day. For each day, the player has 10 actions(Plant or Harvest will use an action).
 - f0.c: When the player steps on a grid, then the grid the highlighted and he can interact with that grid.
@@ -46,6 +46,32 @@ We Choose Typescript instead of Javascript because TS is a superset of JS.
 - f0.e: There is 3 crops, potato, carrot, and cabbage. Each of them has 3 growth level.
 - f0.f: If the sun and water level of current grid fit the requirement of growth, the plant will grow, upgrade to next level.
 - f0.g: The player will unlock achievements if he get a decent number of crops.
+  
+- f1.a: The game's grid state is stored in a single contiguous byte array.
+  We implemented this using an Array of Structures (AoS) format. Each cell is represented by 4 bytes:
+
+  Byte 0: Sunlight (0–100)
+  
+  Byte 1: Water (0–100)
+  
+  Byte 2: Plant Type (0 = none, 1 = potato, 2 = carrot, 3 = cabbage)
+  
+  Byte 3: Plant Level (0–3, 0 means no plant)
+  
+  This yields a layout like this:
+    [Cell0:Sun,Water,Type,Level][Cell1:Sun,Water,Type,Level]...[CellN:Sun,Water,Type,Level]
+
+  ![F1.a data structure diagram](./memory.png)
+
+  Thus, (row * GRID_SIZE + col)*4 gives the starting index for a cell. We chose AoS because it keeps all data for a single tile adjacent, making it straightforward to update and display each tile.
+  
+- f1.b: We serialize dayCount, inventory, achievements, actionsRemaining, gridData, and now also undoStack/redoStack into JSON and store them in localStorage. The player can choose a slot to save and load from.
+
+- f1.c: After major actions (e.g. end of day, planting, harvesting), we auto-save the current state into localStorage under a special autoSave key. On next startup, if autoSave is found, the player can choose to continue from that state.
+
+- f1.d: We maintain two stacks: undoStack and redoStack. Before any major state change, we push the current state onto undoStack. Undo pops from undoStack and pushes onto redoStack, reverting to a previous state. Redo pops from redoStack and pushes to undoStack, moving forward again. These stacks are also saved and loaded, so after loading a game, the player can still undo/redo previous actions.
 
 ## Reflection
-We found that Phaser is enough for our needs, so there is no big changes. However, we somehow changed our roles. Hengyang Ye did the overall design of the game, and I Implement most of the code.
+For F0 We found that Phaser is enough for our needs, so there is no big changes. However, we somehow changed our roles. Hengyang did the overall design of the game, and Ray Implement most of the code.
+
+Implementing F1 made us consider how the player's interaction with the game’s timeline evolves. Previously, we only tracked current state, but now we manage historical states for undo/redo. We needed a more careful approach to serialization, ensuring undoStack and redoStack were saved and restored properly.
