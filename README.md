@@ -37,6 +37,11 @@ We Choose Typescript instead of Javascript because TS is a superset of JS.
 
 
 # Devlog F0
+
+F0 Video:
+
+https://drive.google.com/file/d/1J96qmZidWx0OivmfSuT5HXZSIu3bYhP_/view?usp=sharing
+
 ## How we satisfied the software requirements
 - f0.a: The player can control a yellow square as the character, using arrow keys to move over a 5*5 2D grid.
 - f0.b: The player can clicked the 'next day' button to start the next day. For each day, the player has 10 actions(Plant or Harvest will use an action).
@@ -49,7 +54,13 @@ We Choose Typescript instead of Javascript because TS is a superset of JS.
 ## Reflection
 For F0 We found that Phaser is enough for our needs, so there is no big changes. However, we somehow changed our roles. Hengyang did the overall design of the game, and Ray Implement most of the code.
 
+**#For somehow if I missed the time to upload the video in canvas, I will provide the video links below in each devlog!**
+
 # Devlog F1
+
+F1 Video:
+
+https://drive.google.com/file/d/1m4p1aQEZEnVLRRoUsHuiLvaJGGHnDOLp/view?usp=sharing
 
 ## How we satisfied the software requirements
 
@@ -90,6 +101,10 @@ For F0 We found that Phaser is enough for our needs, so there is no big changes.
 Implementing F1 made us consider how the player's interaction with the game’s timeline evolves. Previously, we only tracked current state, but now we manage historical states for undo/redo. We needed a more careful approach to serialization, ensuring undoStack and redoStack were saved and restored properly.
 
 # Devlog F2
+
+F2 Video:
+
+https://drive.google.com/file/d/1ksac5CYxnAPZCAF2ghV6FxyjbiZW76sM/view?usp=sharing
 
 ## How we satisfied the software requirements
 
@@ -165,4 +180,45 @@ We chose JavaScript + Phaser because it allowed us to focus on removing the type
 Looking back on implementing F2, we realized that building the DSLs and separating scenario data from the code gave us greater flexibility. Initially, we tied many features directly into the engine-specific code, but now that we've moved logic into external (YAML) and internal (TypeScript fluent API) DSLs, it's easier to adjust behaviors and conditions without rewriting core logic.
 We also reconsidered our Tools and Materials. The addition of YAML parsing and building an internal DSL forced us to invest time in documentation and in making the DSL intuitive.
 
+
+# Devlog F3
+
+## How we satisfied the software requirements
+
+### F0+F1+F2
+
+- No major changes were made
+
+### Internationalization
+
+We introduced a LocalizationManager to manage all translatable strings in the game. Strings displayed to the player were removed from the main game logic and placed into separate JSON files (en.json, zh.json, he.json). This ensures that all player-facing text is centralized, making it easier to manage and extend.
+
+The game now loads translations dynamically based on the selected language, with default fallbacks to English for untranslated keys. When adding a new language or a translatable string, developers only need to update the relevant JSON file and ensure that the LocalizationManager can access it.
+
+To ensure correctness, we used TypeScript's type system to enforce the presence of translation keys in each language file. This helped catch missing translations during development.
+
+### Localization
+
+The game supports three languages:
+
+English (en): The default language.
+Chinese (zh): Localization was completed using existing knowledge within the team and verified for accuracy.
+Hebrew (he): As a right-to-left script, this required adjustments for text alignment. We used ChatGPT for translations, providing the system with specific phrases and contexts from our game. For example, prompts included: "Translate 'Next Day' in the context of a farming simulation game."
+Language selection is implemented via three buttons displayed on the right side of the screen, labeled with the language name. Players can click a button to switch the language instantly during gameplay.
+
+### Mobile Installation
+
+To make the game installable on a smartphone-class mobile device, we utilized Capacitor. We followed Capacitor’s tutorials (https://www.youtube.com/watch?v=rlNms8xoLXo) for integrating a Phaser game into an Android project. 
+
+### Mobile Play (Offline)
+
+We ensured offline play by bundling all game assets (e.g., images, YAML files) directly into the app during the build process. This was achieved by ensuring that Phaser loaded all assets from local paths rather than relying on external URLs. The dist/ directory was structured to include all necessary files, including language JSON files, images, and audio.
+
+## Reflection
+
+Implementing F3 requirements significantly impacted our development process. We had to reconsider the structure of our assets and game logic to support localization and mobile deployment. For example:
+
+Tools and Materials: We introduced Capacitor for mobile packaging and deployment, which was not part of our initial plan.
+Localization: Designing for multiple languages forced us to rethink how text was handled in the game, leading to cleaner and more modular code.
+Looking forward, these changes provide a solid foundation for future features, such as more advanced feedback systems and expanded localization support. Our team gained experience in cross-platform development and accessibility considerations.
 
