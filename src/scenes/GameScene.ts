@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { GRID_SIZE, TILE_SIZE } from "../utils/Constants";
 import Player from "../objects/Player";
+import * as yaml from 'js-yaml';  
 
 enum PlantType {
   None = 0,
@@ -25,11 +26,6 @@ const growConditions: Record<PlantType, GrowthMap> = {
   [PlantType.None]: {}
 };
 
-interface TileData {
-  rectangle: Phaser.GameObjects.Rectangle;
-  text: Phaser.GameObjects.Text;
-}
-
 interface Inventory {
   potato: number;
   carrot: number;
@@ -52,10 +48,31 @@ interface FullSaveData {
   redoStack: (Omit<GameState,"gridData"> & {gridData:number[]})[];
 }
 
+interface SceneConfig {
+  initial?: {
+    dayCount?: number;
+    inventory?: {
+      potato?: number;
+      carrot?: number;
+      cabbage?: number;
+    };
+    actionsRemaining?: number;
+    achievements?: string[];
+  };
+  gridOverrides?: {
+    row: number;
+    col: number;
+    sunlight?: number;
+    water?: number;
+    plantType?: "potato" | "carrot" | "cabbage";
+    plantLevel?: number;
+  }[];
+}
+
 export default class GameScene extends Phaser.Scene {
   private player!: Player;
-  private grid: TileData[][] = [];
-  private activeTile: TileData | null = null; 
+  private grid: {rectangle: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text;}[][] = [];
+  private activeTile: {rectangle: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text;} | null = null; 
 
   // Current state
   private dayCount: number = 1;
@@ -86,13 +103,11 @@ export default class GameScene extends Phaser.Scene {
     super("GameScene");
   }
 
-  create() {
+  async create() {
     this.gridData = new Uint8Array(GRID_SIZE * GRID_SIZE * this.FIELDS_PER_CELL);
+    // Make sure inuse
+    await this.initNewGame();
 
-    // 初始化场景 (F1.c的方式)：
-    this.initNewGame();
-
-    // 尝试从自动存档加载 (F1.c)
     const autoSaveData = localStorage.getItem("autoSave");
     if (autoSaveData) {
       const loadFromAutoSave = window.confirm("An autosave was found. Do you want to continue where you left off?");
@@ -108,7 +123,6 @@ export default class GameScene extends Phaser.Scene {
       this.input.keyboard.on("keydown-B", () => this.performAction(() => this.plantOnCurrentTile("cabbage")));
       this.input.keyboard.on("keydown-H", () => this.performAction(() => this.harvestFromCurrentTile()));
 
-      // 手动保存
       this.input.keyboard.on("keydown-S", () => {
         const slotStr = window.prompt("Enter save slot number (e.g. 1, 2, 3):");
         if (slotStr) {
@@ -119,7 +133,6 @@ export default class GameScene extends Phaser.Scene {
         }
       });
 
-      // 手动加载
       this.input.keyboard.on("keydown-L", () => {
         const slotStr = window.prompt("Enter load slot number (e.g. 1, 2, 3):");
         if (slotStr) {
@@ -130,7 +143,6 @@ export default class GameScene extends Phaser.Scene {
         }
       });
 
-      // [F1.d] 撤销和重做
       this.input.keyboard.on("keydown-U", () => this.undo());
       this.input.keyboard.on("keydown-R", () => this.redo());
     } else {
@@ -138,11 +150,71 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  private initNewGame() {
+  private async loadSceneConfigFromYAML(): Promise<any> {
+    try {
+      const response = await fetch('dist/scenes.yaml'); 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const text = await response.text();
+      const data = yaml.load(text);
+      return data;
+    } catch (error) {
+      console.error("Error loading scenes.yaml:", error);
+      return null;
+    }
+  }  
+
+  private async initNewGame() {
     this.undoStack = [];
     this.redoStack = [];
 
+    const yamlData = await this.loadSceneConfigFromYAML();
+
+    if (yamlData && yamlData.initial) {
+      const initial = yamlData.initial;
+      if (typeof initial.dayCount === "number") {
+        this.dayCount = initial.dayCount;
+      }
+      if (initial.inventory) {
+        this.inventory = {
+          potato: initial.inventory.potato ?? this.inventory.potato,
+          carrot: initial.inventory.carrot ?? this.inventory.carrot,
+          cabbage: initial.inventory.cabbage ?? this.inventory.cabbage,
+        };
+      }
+      if (typeof initial.actionsRemaining === "number") {
+        this.actionsRemaining = initial.actionsRemaining;
+      }
+      if (Array.isArray(initial.achievements)) {
+        this.achievements = [...initial.achievements];
+      }
+    }
+
     this.createGrid();
+
+    if (yamlData && Array.isArray(yamlData.gridOverrides)) {
+      for (const cell of yamlData.gridOverrides) {
+        const { row, col, sunlight, water, plantType, plantLevel } = cell;
+        if (row >= 0 && row < GRID_SIZE && col >= 0 && col < GRID_SIZE) {
+          if (typeof sunlight === "number") this.setSunlight(row, col, sunlight);
+          if (typeof water === "number") this.setWater(row, col, water);
+
+          if (plantType) {
+            let pType = PlantType.None;
+            if (plantType === "potato") pType = PlantType.Potato;
+            else if (plantType === "carrot") pType = PlantType.Carrot;
+            else if (plantType === "cabbage") pType = PlantType.Cabbage;
+            this.setPlantType(row, col, pType);
+          }
+
+          if (typeof plantLevel === "number") {
+            this.setPlantLevel(row, col, plantLevel);
+          }
+        }
+      }
+    }
+
     this.createPlayer();
     this.createNextDayButton();
     this.createDayCounter();
@@ -151,6 +223,7 @@ export default class GameScene extends Phaser.Scene {
     this.createControlsDisplay();
     this.createActionsCounter();
     this.updateActionsCounter();
+    this.updateAllTilesDisplay();
   }
 
   private createActionsCounter() {
@@ -165,17 +238,12 @@ export default class GameScene extends Phaser.Scene {
   }
 
   private performAction(action: () => void) {
-    // 在执行行动前将当前状态压入undoStack
     this.pushCurrentStateToUndo();
-    // 执行行动
     action();
-    // 清空redoStack
     this.redoStack = [];
-    // 自动存档 (F1.c)
     this.autoSaveGame();
   }
 
-  // 将当前状态复制并压入undoStack
   private pushCurrentStateToUndo() {
     this.undoStack.push(this.copyCurrentState());
   }
@@ -200,7 +268,6 @@ export default class GameScene extends Phaser.Scene {
     this.player.setPosition(state.playerX, state.playerY);
     this.actionsRemaining = state.actionsRemaining;
 
-    // 更新UI显示
     this.dayText.setText(`Day: ${this.dayCount}`);
     this.updateInventoryDisplay();
     this.updateAchievementsDisplay();
@@ -210,9 +277,7 @@ export default class GameScene extends Phaser.Scene {
 
   private undo() {
     if (this.undoStack.length > 0) {
-      // 当前状态压入redoStack
       this.redoStack.push(this.copyCurrentState());
-      // 从undoStack弹出状态并恢复
       const prevState = this.undoStack.pop()!;
       this.loadFromGameState(prevState);
       this.autoSaveGame();
@@ -223,9 +288,7 @@ export default class GameScene extends Phaser.Scene {
 
   private redo() {
     if (this.redoStack.length > 0) {
-      // 当前状态压入undoStack
       this.undoStack.push(this.copyCurrentState());
-      // 从redoStack弹出状态并恢复
       const nextState = this.redoStack.pop()!;
       this.loadFromGameState(nextState);
       this.autoSaveGame();
@@ -298,7 +361,6 @@ R - Redo
     );
     achievementText.setOrigin(0.5, 0.5);
 
-    // 2秒后移除
     this.time.delayedCall(2000, () => {
       achievementText.destroy();
     });
@@ -315,7 +377,7 @@ R - Redo
     const offsetY = (this.cameras.main.height - GRID_SIZE * TILE_SIZE) / 2;
 
     for (let row = 0; row < GRID_SIZE; row++) {
-      const gridRow: TileData[] = [];
+      const gridRow: {rectangle: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text;}[] = [];
       for (let col = 0; col < GRID_SIZE; col++) {
         const x = offsetX + col * TILE_SIZE + TILE_SIZE / 2;
         const y = offsetY + row * TILE_SIZE + TILE_SIZE / 2;
@@ -515,9 +577,8 @@ R - Redo
       return;
     }
 
-    const plantLevel = level as PlantLevel;
     const harvestMap: Record<PlantLevel, number> = {1:1,2:2,3:4};
-    const harvestAmount = harvestMap[plantLevel];
+    const harvestAmount = harvestMap[level as PlantLevel];
 
     let typeKey: "potato"|"carrot"|"cabbage" = "potato";
     if (plantType === PlantType.Carrot) typeKey = "carrot";
