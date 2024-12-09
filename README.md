@@ -38,7 +38,7 @@ We Choose Typescript instead of Javascript because TS is a superset of JS.
 
 ## How we satisfied the software requirements
 
-### F0
+### F0+F1
 - f0.a: The player can control a yellow square as the character, using arrow keys to move over a 5*5 2D grid.
 - f0.b: The player can clicked the 'next day' button to start the next day. For each day, the player has 10 actions(Plant or Harvest will use an action).
 - f0.c: When the player steps on a grid, then the grid the highlighted and he can interact with that grid.
