@@ -36,6 +36,9 @@ We Choose Typescript instead of Javascript because TS is a superset of JS.
 - We wish to learn the implementation of a SAVE & LOAD system for game, and the Internal and External DSLs.
 
 
+**#For somehow if I missed the time to upload the video in canvas, I will provide the video links below in each devlog!**
+
+
 # Devlog F0
 
 F0 Video:
@@ -54,7 +57,6 @@ https://drive.google.com/file/d/1J96qmZidWx0OivmfSuT5HXZSIu3bYhP_/view?usp=shari
 ## Reflection
 For F0 We found that Phaser is enough for our needs, so there is no big changes. However, we somehow changed our roles. Hengyang did the overall design of the game, and Ray Implement most of the code.
 
-**#For somehow if I missed the time to upload the video in canvas, I will provide the video links below in each devlog!**
 
 # Devlog F1
 
