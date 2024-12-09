@@ -147,17 +147,19 @@ This code defines a carrot plant type with two additional growth stages beyond t
 For our alternate platform, we decided to move from TypeScript + Phaser to a JavaScript still using Phaser. By removing the TypeScript layer and working directly in JavaScript, we tested how the absence of static typing and compile-time checks would impact our ability to maintain the DSL-driven design.
 
 What carried over:
+
 The external scenario definitions in YAML and the internal DSL for plant growth conditions remained almost entirely unchanged. We can still load and parse the YAML scenario files and interpret plant definitions the same way. The logic that was previously expressed in TypeScript still transfers directly into JavaScript because JavaScript is the underlying runtime. Our DSL structures—objects, arrays, and higher-order functions—are all compatible since they rely on language features present in both TypeScript and JavaScript.
 
 What changed:
+
 With TypeScript removed, we lose compile-time type checks and editor-level type hints. This means less direct guidance when writing DSL code and scenario interpretation logic. While the DSL code looks similar (the definePlant calls and YAML parsing remain the same), any type-specific safeguards we had are gone, making runtime validation and careful testing even more important.
 
 The Phaser API usage itself remains the same since we are still using Phaser as the game engine. The scene and input handling work as they did before, just without TypeScript declarations. We still have this.add.text(), this.add.rectangle(), and Phaser’s scene lifecycle methods. The main difference is that these calls no longer benefit from TypeScript's intellisense and strict type checking.
 
 Choice of new platform:
-We chose JavaScript + Phaser because it allowed us to focus on removing the type-checking layer without changing the engine framework. The result is a scenario where we rely more on runtime checks and careful testing. The DSL-driven approach for scenarios and plant definitions continues to pay off since our DSL logic is platform (and in this case, type-system) agnostic.
 
-In summary, switching from TypeScript + Phaser to JavaScript + Phaser mainly affected our development experience rather than our code structure. The DSL-based approach ensured that scenario data and plant growth logic remained intact and easy to adapt, while removing the type system made us more reliant on runtime testing and validation.
+We chose JavaScript + Phaser because it allowed us to focus on removing the type-checking layer without changing the engine framework. 
+
 
 ## Reflection
 Looking back on implementing F2, we realized that building the DSLs and separating scenario data from the code gave us greater flexibility. Initially, we tied many features directly into the engine-specific code, but now that we've moved logic into external (YAML) and internal (TypeScript fluent API) DSLs, it's easier to adjust behaviors and conditions without rewriting core logic.
