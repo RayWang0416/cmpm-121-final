@@ -17,58 +17,8 @@ interface GrowthCondition {
   water: number;
 }
 
+// 使用Partial允许阶段配置为空
 type GrowthMap = Partial<Record<PlantLevel, GrowthCondition>>;
-
-// Internal DSL
-// 定义一个用于构建植物生长条件的 DSL
-class PlantBuilder {
-  private conditions: Partial<Record<PlantLevel, GrowthCondition>> = {};
-
-  growthStage(level: PlantLevel, sunlight: number, water: number): PlantBuilder {
-    this.conditions[level] = { sunlight, water };
-    return this;
-  }
-
-  build(): GrowthMap {
-    // GrowthMap是Partial<Record<PlantLevel, GrowthCondition>>
-    return this.conditions; 
-  }
-}
-
-
-// 存放所有植物定义
-const plantDefinitions: Record<PlantType, GrowthMap> = {
-  [PlantType.None]: {},
-  [PlantType.Potato]: {},
-  [PlantType.Carrot]: {},
-  [PlantType.Cabbage]: {}
-};
-
-// 定义一个函数用于注册植物定义
-function definePlant(type: PlantType, definition: (b: PlantBuilder) => void) {
-  const builder = new PlantBuilder();
-  definition(builder);
-  plantDefinitions[type] = builder.build();
-}
-
-// 使用我们的 Internal DSL 来定义各种植物的生长条件
-definePlant(PlantType.Potato, b => {
-  b.growthStage(2, 20, 20)
-   .growthStage(3, 20, 20);
-});
-
-definePlant(PlantType.Carrot, b => {
-  b.growthStage(2, 60, 40)
-   .growthStage(3, 45, 20);
-});
-
-definePlant(PlantType.Cabbage, b => {
-  b.growthStage(2, 55, 30)
-   .growthStage(3, 65, 20);
-});
-
-// None 类型不需要定义，因为它没有生长条件
-plantDefinitions[PlantType.None] = {};
 
 interface Inventory {
   potato: number;
@@ -112,6 +62,49 @@ interface SceneConfig {
     plantLevel?: number;
   }[];
 }
+
+// 用于读取plants.yaml的类型定义
+interface PlantLevelConfig {
+  level: number;
+  sunlight: number;
+  water: number;
+}
+
+interface PlantsYAML {
+  plants: {
+    potato?: PlantLevelConfig[];
+    carrot?: PlantLevelConfig[];
+    cabbage?: PlantLevelConfig[];
+  }
+}
+
+// Internal DSL: PlantBuilder和definePlant
+class PlantBuilder {
+  private conditions: GrowthMap = {};
+
+  growthStage(level: PlantLevel, sunlight: number, water: number): PlantBuilder {
+    this.conditions[level] = { sunlight, water };
+    return this;
+  }
+
+  build(): GrowthMap {
+    return this.conditions;
+  }
+}
+
+const plantDefinitions: Record<PlantType, GrowthMap> = {
+  [PlantType.None]: {},
+  [PlantType.Potato]: {},
+  [PlantType.Carrot]: {},
+  [PlantType.Cabbage]: {}
+};
+
+function definePlant(type: PlantType, definition: (b: PlantBuilder) => void) {
+  const builder = new PlantBuilder();
+  definition(builder);
+  plantDefinitions[type] = builder.build();
+}
+
 
 export default class GameScene extends Phaser.Scene {
   private player!: Player;
@@ -207,10 +200,52 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  // Internal DSL
+  private async loadPlantDefinitionsFromYAML(): Promise<void> {
+    try {
+      const response = await fetch('dist/plants.yaml');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const text = await response.text();
+      const data = yaml.load(text) as PlantsYAML;
+
+      // 根据yaml数据定义植物
+      if (data.plants.potato) {
+        definePlant(PlantType.Potato, b => {
+          for (const cfg of data.plants.potato!) {
+            b.growthStage(cfg.level as PlantLevel, cfg.sunlight, cfg.water);
+          }
+        });
+      }
+      if (data.plants.carrot) {
+        definePlant(PlantType.Carrot, b => {
+          for (const cfg of data.plants.carrot!) {
+            b.growthStage(cfg.level as PlantLevel, cfg.sunlight, cfg.water);
+          }
+        });
+      }
+      if (data.plants.cabbage) {
+        definePlant(PlantType.Cabbage, b => {
+          for (const cfg of data.plants.cabbage!) {
+            b.growthStage(cfg.level as PlantLevel, cfg.sunlight, cfg.water);
+          }
+        });
+      }
+
+    } catch (error) {
+      console.error("Error loading plants.yaml:", error);
+    }
+  }
+
   private async initNewGame() {
     this.undoStack = [];
     this.redoStack = [];
 
+    // 先加载植物定义
+    await this.loadPlantDefinitionsFromYAML();
+
+    // 再加载场景数据
     const yamlData = await this.loadSceneConfigFromYAML();
 
     if (yamlData && yamlData.initial) {
@@ -614,8 +649,6 @@ R - Redo
         if (currentLevel < 1 || currentLevel > 3) continue;
 
         const nextLevel = (currentLevel + 1) as PlantLevel;
-
-        // 使用新的内部DSL定义中的plantDefinitions来获取生长条件
         const cond = plantDefinitions[plantType][nextLevel];
         if (!cond) continue;
 
