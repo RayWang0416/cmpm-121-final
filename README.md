@@ -203,9 +203,9 @@ The game supports three languages:
 
 English (en): The default language.
 
-Chinese (zh): Localization was completed using existing knowledge within the team and verified for accuracy.
+Chinese (zh): logographic. Localization was completed by a Chinese team member.
 
-Hebrew (he): As a right-to-left script, this required adjustments for text alignment. We used ChatGPT for translations, providing the system with specific phrases and contexts from our game. For example, prompts included: "Translate 'Next Day' in the context of a farming simulation game."
+Hebrew (he): As a right-to-left script, this required adjustments for text alignment. We used ChatGPT for translations.
 
 Language selection is implemented via three buttons displayed on the right side of the screen, labeled with the language name. Players can click a button to switch the language instantly during gameplay.
 
